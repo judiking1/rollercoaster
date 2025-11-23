@@ -1,51 +1,61 @@
 import { create } from 'zustand'
-import { v4 as uuidv4 } from 'uuid'
 import { calculateNextTrackSegment, checkCollision, calculateForwardVector } from '../utils/trackUtils'
 import * as THREE from 'three'
 
 export type TrackDirection = 'STRAIGHT' | 'LEFT' | 'RIGHT'
 export type TrackSlope = 'FLAT' | 'UP' | 'DOWN'
 
+// --- V2 Data Structures ---
+
 export interface TrackNode {
     id: string
     position: [number, number, number]
     rotation: [number, number, number, number] // Quaternion [x, y, z, w]
-    tangent: [number, number, number] // Direction vector
-    normal: [number, number, number] // Up vector
-    type?: 'START' | 'NORMAL'
+    tangent: [number, number, number] // Forward vector
+
+    // Connectivity: A node is a point. It can have ONE incoming and ONE outgoing segment.
+    outgoingSegmentId: string | null
+    incomingSegmentId: string | null
+
+    type: 'STATION_START' | 'STATION_END' | 'NORMAL'
 }
 
-export interface TrackSegmentData {
+export interface TrackSegment {
     id: string
-    direction: TrackDirection
-    slope: TrackSlope
     startNodeId: string
     endNodeId: string
-    controlPoints: [number, number, number][] // Bezier control points
+
+    // Geometry
+    controlPoints: [number, number, number][]
     length: number
+    direction: TrackDirection
+    slope: TrackSlope
 }
 
 export interface Ride {
     id: string
     name: string
     nodes: Record<string, TrackNode>
-    segments: TrackSegmentData[]
+    segments: Record<string, TrackSegment>
+
+    // Counters for unique IDs
+    nextSegmentId: number
+    nextNodeId: number
+
     isComplete: boolean
-    stats: {
-        length: number
-        maxHeight: number
-        maxSpeed: number
-    }
 }
 
 interface TrackState {
     rides: Record<string, Ride>
     activeRideId: string | null
-    activeNodeId: string | null // The node we are currently building from
-    previewSegment: TrackSegmentData | null
+    activeNodeId: string | null // The "Head" node we are currently building FROM
+
+    // Preview State
+    previewSegment: TrackSegment | null
+    snapTargetId: string | null // If set, we are snapping to this node
     validationError: string | null
 
-    // Builder State
+    // Builder Settings
     currentDirection: TrackDirection
     currentSlope: TrackSlope
     isBuilding: boolean
@@ -55,38 +65,40 @@ interface TrackState {
 
     // Placement State
     placementMode: 'ACTIVE' | 'INACTIVE'
-    placementRotation: number // Rotation in radians around Y axis
+    placementRotation: number
     ghostPosition: [number, number, number] | null
 
     // Actions
     setPlacementMode: (mode: 'ACTIVE' | 'INACTIVE') => void
     setGhostPosition: (position: [number, number, number] | null) => void
     rotatePlacement: () => void
+
     createRide: (startPosition: [number, number, number]) => void
-    setActiveRide: (rideId: string) => void
+    setActiveRide: (rideId: string | null) => void
+
     startBuilding: () => void
     setDirection: (direction: TrackDirection) => void
     setSlope: (slope: TrackSlope) => void
-    commitPreview: () => void
-    cancelPreview: () => void
-    removeLastSegment: () => void
-    reset: () => void
-    closeLoop: () => void
-    finalizeRide: (name: string) => void
-    savePark: () => void
-    loadPark: () => void
-    exportPark: () => void
-    importPark: (jsonContent: string) => void
 
-    // Edit Actions
+    commitPreview: () => void // The ONLY way to add a segment
+    cancelPreview: () => void
+
     selectSegment: (segmentId: string | null) => void
     deleteSelectedSegment: () => void
     resumeBuilding: (rideId: string, nodeId: string) => void
 
     // Helpers
     getActiveRide: () => Ride | undefined
-    getLastNode: () => TrackNode | undefined
+    getLastNode: () => TrackNode | undefined // Returns the node at activeNodeId
+    getOpenNodes: () => { nodeId: string, node: TrackNode, type: 'HEAD' | 'TAIL' }[]
     updatePreview: () => void
+
+    // Persistence
+    savePark: () => void
+    loadPark: () => void
+    exportPark: () => void
+    importPark: (jsonContent: string) => void
+    reset: () => void
 }
 
 export const useTrackStore = create<TrackState>((set, get) => ({
@@ -94,6 +106,7 @@ export const useTrackStore = create<TrackState>((set, get) => ({
     activeRideId: null,
     activeNodeId: null,
     previewSegment: null,
+    snapTargetId: null,
     validationError: null,
     currentDirection: 'STRAIGHT',
     currentSlope: 'FLAT',
@@ -105,209 +118,16 @@ export const useTrackStore = create<TrackState>((set, get) => ({
 
     setPlacementMode: (mode) => set({ placementMode: mode }),
     setGhostPosition: (position) => set({ ghostPosition: position }),
-
     rotatePlacement: () => set((state) => ({ placementRotation: state.placementRotation + Math.PI / 2 })),
-
-    selectSegment: (segmentId) => set({ selectedSegmentId: segmentId }),
-
-    resumeBuilding: (rideId, nodeId) => {
-        const state = get()
-        const ride = state.rides[rideId]
-        if (!ride) return
-
-        let targetNodeId = nodeId
-
-        // If no specific node provided, try to find a good default
-        if (!targetNodeId) {
-            if (ride.segments.length > 0) {
-                // Default to the end of the last segment
-                targetNodeId = ride.segments[ride.segments.length - 1].endNodeId
-            } else {
-                // Default to start node (try new format first, fallback to old)
-                targetNodeId = `${rideId}-node-0`
-                if (!ride.nodes[targetNodeId]) {
-                    targetNodeId = `start-node-${rideId}`
-                }
-            }
-        }
-
-        set({
-            activeRideId: rideId,
-            isBuilding: true,
-            selectedSegmentId: null,
-            activeNodeId: targetNodeId
-        })
-
-        get().updatePreview()
-    },
-
-    deleteSelectedSegment: () => {
-        const state = get()
-        const { selectedSegmentId, rides } = state
-        if (!selectedSegmentId) return
-
-        // Find which ride has this segment
-        let targetRideId: string | null = null
-        let targetRide: Ride | null = null
-
-        for (const rideId in rides) {
-            if (rides[rideId].segments.some(s => s.id === selectedSegmentId)) {
-                targetRideId = rideId
-                targetRide = rides[rideId]
-                break
-            }
-        }
-
-        if (!targetRideId || !targetRide) return
-
-        // Find the segment to delete
-        const segmentToDelete = targetRide.segments.find(s => s.id === selectedSegmentId)
-        if (!segmentToDelete) return
-
-        // Remove segment
-        const newSegments = targetRide.segments.filter(s => s.id !== selectedSegmentId)
-
-        // Identify orphaned nodes
-        // A node is orphaned if it is not referenced by any remaining segment
-        const usedNodeIds = new Set<string>()
-        newSegments.forEach(s => {
-            usedNodeIds.add(s.startNodeId)
-            usedNodeIds.add(s.endNodeId)
-        })
-
-        // Always keep the ride's main start node (use correct format)
-        const rideStartNodeId = `${targetRideId}-node-0`
-        usedNodeIds.add(rideStartNodeId)
-
-        const newNodes: Record<string, TrackNode> = {}
-        Object.values(targetRide.nodes).forEach(node => {
-            if (usedNodeIds.has(node.id)) {
-                newNodes[node.id] = node
-            }
-        })
-
-        // Update ride
-        const updatedRide = {
-            ...targetRide,
-            segments: newSegments,
-            nodes: newNodes,
-            isComplete: false
-        }
-
-        set({
-            rides: { ...rides, [targetRideId]: updatedRide },
-            selectedSegmentId: null
-        })
-    },
-
-    savePark: () => {
-        const { rides } = get()
-        try {
-            localStorage.setItem('rollercoaster_park_data', JSON.stringify(rides))
-            alert('Park saved successfully!')
-        } catch (e) {
-            console.error('Failed to save park:', e)
-            alert('Failed to save park.')
-        }
-    },
-
-    loadPark: () => {
-        try {
-            const data = localStorage.getItem('rollercoaster_park_data')
-            if (data) {
-                const rides = JSON.parse(data)
-                set({ rides, activeRideId: null, isBuilding: false, placementMode: 'INACTIVE' })
-                alert('Park loaded successfully!')
-            } else {
-                alert('No saved park found.')
-            }
-        } catch (e) {
-            console.error('Failed to load park:', e)
-            alert('Failed to load park.')
-        }
-    },
-
-    exportPark: () => {
-        const { rides } = get()
-
-        // Custom replacer to round numbers to 4 decimal places
-        const replacer = (_key: string, value: any) => {
-            if (typeof value === 'number') {
-                return Number(value.toFixed(4))
-            }
-            return value
-        }
-
-        const dataStr = JSON.stringify(rides, replacer, 2)
-        const blob = new Blob([dataStr], { type: 'application/json' })
-        const url = URL.createObjectURL(blob)
-
-        // Use explicit date formatting to avoid locale issues
-        const now = new Date()
-        const year = now.getFullYear()
-        const month = String(now.getMonth() + 1).padStart(2, '0')
-        const day = String(now.getDate()).padStart(2, '0')
-        const filename = `park-${year}-${month}-${day}.json`
-
-        const a = document.createElement('a')
-        a.href = url
-        a.download = filename
-        document.body.appendChild(a)
-        a.click()
-        document.body.removeChild(a)
-        URL.revokeObjectURL(url)
-    },
-
-    importPark: (jsonContent: string) => {
-        try {
-            const rides = JSON.parse(jsonContent)
-            if (typeof rides !== 'object') throw new Error('Invalid JSON format')
-
-            set({ rides, activeRideId: null, isBuilding: false, placementMode: 'INACTIVE' })
-            alert('Park imported successfully!')
-        } catch (e) {
-            console.error('Failed to import park:', e)
-            alert('Failed to import park. Invalid file format.')
-        }
-    },
-
-    getActiveRide: () => {
-        const { rides, activeRideId } = get()
-        if (!activeRideId) return undefined
-        return rides[activeRideId]
-    },
-
-    getLastNode: () => {
-        const { rides, activeRideId, activeNodeId } = get()
-        if (!activeRideId) return undefined
-        const ride = rides[activeRideId]
-        if (!ride) return undefined
-
-        // If we have an explicit activeNodeId, use it
-        if (activeNodeId && ride.nodes[activeNodeId]) {
-            return ride.nodes[activeNodeId]
-        }
-
-        // Fallback to the end of the last segment
-        if (ride.segments.length > 0) {
-            const lastSegment = ride.segments[ride.segments.length - 1]
-            return ride.nodes[lastSegment.endNodeId]
-        }
-
-        // If no segments, return start node
-        const startNodeId = `${activeRideId}-node-0`
-        return ride.nodes[startNodeId]
-    },
 
     createRide: (startPosition) => {
         const state = get()
         const rideIndex = Object.keys(state.rides).length + 1
         const rideId = `ride-${rideIndex}`
         const rideName = `Ride ${rideIndex}`
-
         const rotation = state.placementRotation
 
-        // Calculate initial tangent based on rotation
+        // Initial Tangent
         const tangent: [number, number, number] = [
             Math.sin(rotation),
             0,
@@ -321,367 +141,426 @@ export const useTrackStore = create<TrackState>((set, get) => ({
             position: startPosition,
             rotation: [0, Math.sin(rotation / 2), 0, Math.cos(rotation / 2)],
             tangent,
-            normal: [0, 1, 0],
-            type: 'START'
-        }
-
-        // Create End Node (Initial Segment)
-        // Default length 4 units in the direction of tangent
-        const endNodeId = `${rideId}-node-1`
-        const endPosition: [number, number, number] = [
-            startPosition[0] + tangent[0] * 4,
-            startPosition[1] + tangent[1] * 4,
-            startPosition[2] + tangent[2] * 4
-        ]
-
-        const endNode: TrackNode = {
-            id: endNodeId,
-            position: endPosition,
-            rotation: [0, Math.sin(rotation / 2), 0, Math.cos(rotation / 2)],
-            tangent,
-            normal: [0, 1, 0],
-            type: 'NORMAL'
-        }
-
-        // Create Segment
-        const segmentId = `${rideId}-segment-0`
-        const segment: TrackSegmentData = {
-            id: segmentId,
-            startNodeId,
-            endNodeId,
-            direction: 'STRAIGHT',
-            slope: 'FLAT',
-            length: 4,
-            controlPoints: [
-                startPosition,
-                [startPosition[0] + tangent[0], startPosition[1] + tangent[1], startPosition[2] + tangent[2]],
-                [endPosition[0] - tangent[0], endPosition[1] - tangent[1], endPosition[2] - tangent[2]],
-                endPosition
-            ]
+            outgoingSegmentId: null,
+            incomingSegmentId: null,
+            type: 'STATION_START'
         }
 
         const newRide: Ride = {
             id: rideId,
             name: rideName,
-            segments: [segment],
-            nodes: {
-                [startNodeId]: startNode,
-                [endNodeId]: endNode
-            },
-            isComplete: false,
-            stats: { length: 4, maxHeight: startPosition[1], maxSpeed: 0 }
+            nodes: { [startNodeId]: startNode },
+            segments: {},
+            nextSegmentId: 0,
+            nextNodeId: 1,
+            isComplete: false
         }
 
-        set((state) => ({
+        set({
             rides: { ...state.rides, [rideId]: newRide },
             activeRideId: rideId,
-            activeNodeId: endNodeId, // Continue building from the end of the first segment
+            activeNodeId: startNodeId,
             isBuilding: true,
             placementMode: 'INACTIVE',
             previewSegment: null,
-            placementRotation: 0 // Reset rotation
-        }))
-
+            placementRotation: 0
+        })
         get().updatePreview()
     },
 
-    setActiveRide: (rideId) => {
-        set({ activeRideId: rideId })
-    },
-
-    updatePreview: () => {
-        const state = get()
-        const { currentDirection, currentSlope, rides } = state
-        const ride = state.getActiveRide()
-
-        if (!ride) return
-
-        const lastNode = state.getLastNode()
-        if (!lastNode) return
-
-        const { endNode, controlPoints, length } = calculateNextTrackSegment(lastNode, currentDirection, currentSlope)
-
-        // Collision Check with smart gap detection
-        const allSegments: TrackSegmentData[] = []
-        Object.values(rides).forEach(r => allSegments.push(...r.segments))
-
-        // Build list of segments to exclude from collision check
-        const excludeSegmentIds: string[] = []
-
-        // 1. Always exclude all segments connected to the current node (lastNode)
-        ride.segments.forEach(segment => {
-            if (segment.endNodeId === lastNode.id || segment.startNodeId === lastNode.id) {
-                excludeSegmentIds.push(segment.id)
-            }
-        })
-
-        // 2. Smart gap detection: Find if we're trying to connect to an open node
-        //    An open node is one that has only one segment connected to it
-        const openNodes: string[] = []
-        const nodeConnections = new Map<string, number>()
-
-        // Count connections for each node
-        ride.segments.forEach(segment => {
-            nodeConnections.set(segment.startNodeId, (nodeConnections.get(segment.startNodeId) || 0) + 1)
-            nodeConnections.set(segment.endNodeId, (nodeConnections.get(segment.endNodeId) || 0) + 1)
-        })
-
-        // Find open nodes (nodes with only 1 connection, excluding start node)
-        const startNodeId = `${ride.id}-node-0`
-        for (const [nodeId, connections] of nodeConnections.entries()) {
-            if (connections === 1 && nodeId !== startNodeId) {
-                openNodes.push(nodeId)
-            }
-        }
-
-        // Check if preview's end position is near any open node
-        const endPos = endNode.position
-        for (const openNodeId of openNodes) {
-            const openNode = ride.nodes[openNodeId]
-            if (!openNode || openNodeId === lastNode.id) continue
-
-            const dx = endPos[0] - openNode.position[0]
-            const dy = endPos[1] - openNode.position[1]
-            const dz = endPos[2] - openNode.position[2]
-            const distToOpen = Math.sqrt(dx * dx + dy * dy + dz * dz)
-
-            // If we're close to an open node (within 6 units), exclude its connected segment
-            if (distToOpen < 6) {
-                ride.segments.forEach(segment => {
-                    if (segment.startNodeId === openNodeId || segment.endNodeId === openNodeId) {
-                        if (!excludeSegmentIds.includes(segment.id)) {
-                            excludeSegmentIds.push(segment.id)
-                        }
-                    }
-                })
-            }
-        }
-
-        // 3. When close to completing a loop, also exclude the first segment
-        if (ride.segments.length > 0) {
-            const firstSegment = ride.segments[0]
-            const firstStartNodeId = firstSegment.startNodeId
-            const firstStartNode = ride.nodes[firstStartNodeId]
-
-            if (firstStartNode) {
-                const dx = endPos[0] - firstStartNode.position[0]
-                const dy = endPos[1] - firstStartNode.position[1]
-                const dz = endPos[2] - firstStartNode.position[2]
-                const distToStart = Math.sqrt(dx * dx + dy * dy + dz * dz)
-
-                if (distToStart < 6 && !excludeSegmentIds.includes(firstSegment.id)) {
-                    excludeSegmentIds.push(firstSegment.id)
-                }
-            }
-        }
-
-        const isColliding = checkCollision(controlPoints, allSegments, excludeSegmentIds)
-
-        set({
-            previewSegment: {
-                id: 'preview',
-                direction: currentDirection,
-                slope: currentSlope,
-                startNodeId: lastNode.id,
-                endNodeId: endNode.id,
-                controlPoints,
-                length
-            },
-            validationError: isColliding ? 'Track overlaps with existing segment!' : null
-        })
-    },
+    setActiveRide: (rideId) => set({ activeRideId: rideId }),
 
     startBuilding: () => {
-        if (!get().activeRideId) {
-            get().createRide([0, 0, 0])
+        const state = get()
+        if (!state.activeRideId) {
+            // If no ride, create one at 0,0,0 (fallback)
+            state.createRide([0, 0, 0])
+        } else {
+            // Resume from the last added node if activeNodeId is missing
+            let nodeId = state.activeNodeId
+            const ride = state.rides[state.activeRideId]
+            if (!nodeId && ride) {
+                // Find a node with no outgoing segment (Open Tail)
+                const openTail = Object.values(ride.nodes).find(n => n.outgoingSegmentId === null)
+                if (openTail) nodeId = openTail.id
+            }
+
+            set({
+                isBuilding: true,
+                activeNodeId: nodeId,
+                currentDirection: 'STRAIGHT',
+                currentSlope: 'FLAT'
+            })
+            get().updatePreview()
         }
-        set({ isBuilding: true, currentDirection: 'STRAIGHT', currentSlope: 'FLAT' })
-        get().updatePreview()
     },
 
     setDirection: (direction) => {
         set({ currentDirection: direction })
-        if (get().isBuilding) {
-            get().updatePreview()
-        }
+        get().updatePreview()
     },
 
     setSlope: (slope) => {
         set({ currentSlope: slope })
-        if (get().isBuilding) {
-            get().updatePreview()
+        get().updatePreview()
+    },
+
+    updatePreview: () => {
+        const state = get()
+        const { activeRideId, activeNodeId, currentDirection, currentSlope, rides } = state
+
+        if (!activeRideId || !activeNodeId) return
+        const ride = rides[activeRideId]
+        if (!ride) return
+
+        const fromNode = ride.nodes[activeNodeId]
+        if (!fromNode) return
+
+        // 1. Calculate Ideal Next Segment
+        const { endNode: idealEndNode, controlPoints, length } = calculateNextTrackSegment(fromNode, currentDirection, currentSlope)
+
+        // 2. Scan for Snap Targets (Snap-First Logic)
+        let snapTargetId: string | null = null
+        let finalControlPoints = controlPoints
+        let finalLength = length
+        let finalEndNodeId = 'preview-end' // Placeholder
+
+        const SNAP_RADIUS = 10
+        const segmentCount = Object.keys(ride.segments).length
+
+        // Only snap if we have enough segments (>= 3) to avoid immediate loop closure
+        if (segmentCount >= 3) {
+            const potentialTargets = Object.values(ride.nodes).filter(n =>
+                n.id !== fromNode.id &&
+                n.incomingSegmentId === null
+            )
+
+            for (const target of potentialTargets) {
+                const dx = target.position[0] - idealEndNode.position[0]
+                const dy = target.position[1] - idealEndNode.position[1]
+                const dz = target.position[2] - idealEndNode.position[2]
+                const dist = Math.sqrt(dx * dx + dy * dy + dz * dz)
+
+                if (dist < SNAP_RADIUS) {
+                    snapTargetId = target.id
+
+                    // Recalculate Curve to Snap
+                    const p0 = new THREE.Vector3(...fromNode.position)
+                    const p3 = new THREE.Vector3(...target.position)
+                    const distToTarget = p0.distanceTo(p3)
+
+                    const t0 = new THREE.Vector3(...fromNode.tangent)
+                    const t3 = new THREE.Vector3(...target.tangent)
+
+                    // Scale handles based on distance
+                    const scale = distToTarget * 0.4
+                    const p1 = p0.clone().add(t0.clone().multiplyScalar(scale))
+                    const p2 = p3.clone().sub(t3.clone().multiplyScalar(scale))
+
+                    finalControlPoints = [
+                        [p0.x, p0.y, p0.z],
+                        [p1.x, p1.y, p1.z],
+                        [p2.x, p2.y, p2.z],
+                        [p3.x, p3.y, p3.z]
+                    ]
+                    finalLength = distToTarget
+                    finalEndNodeId = target.id
+                    break // Found a target, stop looking
+                }
+            }
         }
+
+        // 3. Collision Detection
+        const allSegments: any[] = []
+        Object.values(rides).forEach(r => Object.values(r.segments).forEach(s => allSegments.push(s)))
+
+        const excludeSegmentIds: string[] = []
+        if (fromNode.incomingSegmentId) excludeSegmentIds.push(fromNode.incomingSegmentId)
+        if (fromNode.outgoingSegmentId) excludeSegmentIds.push(fromNode.outgoingSegmentId)
+
+        if (snapTargetId) {
+            const target = ride.nodes[snapTargetId]
+            if (target.outgoingSegmentId) excludeSegmentIds.push(target.outgoingSegmentId)
+        }
+
+        const isColliding = checkCollision(finalControlPoints, allSegments, excludeSegmentIds)
+
+        set({
+            previewSegment: {
+                id: 'preview',
+                startNodeId: fromNode.id,
+                endNodeId: finalEndNodeId,
+                controlPoints: finalControlPoints,
+                length: finalLength,
+                direction: currentDirection,
+                slope: currentSlope
+            },
+            snapTargetId,
+            validationError: isColliding ? 'Track overlaps with existing segment!' : null
+        })
     },
 
     commitPreview: () => {
         const state = get()
-        const { previewSegment, activeRideId, rides, validationError } = state
+        const { activeRideId, activeNodeId, previewSegment, snapTargetId, validationError, rides } = state
 
-        if (!previewSegment || !activeRideId || validationError) return
-
+        if (!activeRideId || !activeNodeId || !previewSegment || validationError) return
         const ride = rides[activeRideId]
         if (!ride) return
 
-        // Generate readable IDs
-        const segmentIndex = ride.segments.length
-        const nodeIndex = Object.keys(ride.nodes).length
+        const fromNode = ride.nodes[activeNodeId]
+        if (!fromNode) return
 
-        // Use a fallback if ID collision (though unlikely with sequential)
-        // Or just append random string if needed, but user asked for readable
-        const newSegmentId = `${activeRideId}-segment-${segmentIndex}`
-        const newNodeId = `${activeRideId}-node-${nodeIndex}`
+        // Generate IDs
+        const newSegmentId = `${activeRideId}-segment-${ride.nextSegmentId}`
+        let nextNodeIdCounter = ride.nextNodeId
 
-        const newSegment: TrackSegmentData = {
+        // Determine End Node
+        let endNode: TrackNode
+
+        if (snapTargetId) {
+            // Connect to existing node
+            endNode = ride.nodes[snapTargetId]
+            // Validate again just in case
+            if (endNode.incomingSegmentId !== null) {
+                console.error("Snap target already has incoming segment")
+                return
+            }
+        } else {
+            // Create New Node
+            const newNodeId = `${activeRideId}-node-${nextNodeIdCounter}`
+            nextNodeIdCounter++
+
+            // Calculate tangent at end of curve
+            const tangent = calculateForwardVector(previewSegment.controlPoints)
+
+            endNode = {
+                id: newNodeId,
+                position: previewSegment.controlPoints[3],
+                rotation: [0, 0, 0, 1], // Simplified, should calculate from tangent
+                tangent,
+                outgoingSegmentId: null,
+                incomingSegmentId: null,
+                type: 'NORMAL'
+            }
+        }
+
+        // Create Segment
+        const newSegment: TrackSegment = {
             ...previewSegment,
             id: newSegmentId,
-            endNodeId: newNodeId // Update endNodeId to match the new node ID
+            startNodeId: fromNode.id,
+            endNodeId: endNode.id
         }
 
-        const newNode: TrackNode = {
-            id: newNodeId,
-            position: previewSegment.controlPoints[3],
-            rotation: [0, 0, 0, 1], // Simplified
-            tangent: calculateForwardVector(previewSegment.controlPoints),
-            normal: [0, 1, 0], // Simplified
-            type: 'NORMAL'
-        }
+        // Update Nodes
+        const updatedFromNode = { ...fromNode, outgoingSegmentId: newSegmentId }
+        const updatedEndNode = { ...endNode, incomingSegmentId: newSegmentId }
 
-        const updatedRide = {
+        // Update Ride
+        const updatedNodes = { ...ride.nodes, [fromNode.id]: updatedFromNode, [endNode.id]: updatedEndNode }
+        const updatedSegments = { ...ride.segments, [newSegmentId]: newSegment }
+
+        const updatedRide: Ride = {
             ...ride,
-            segments: [...ride.segments, newSegment],
-            nodes: { ...ride.nodes, [newNode.id]: newNode }
+            nodes: updatedNodes,
+            segments: updatedSegments,
+            nextSegmentId: ride.nextSegmentId + 1,
+            nextNodeId: nextNodeIdCounter,
+            isComplete: snapTargetId ? true : false // If we snapped, we likely closed a loop or connected parts
         }
 
         set({
             rides: { ...rides, [activeRideId]: updatedRide },
-            activeNodeId: newNode.id, // Advance cursor
-            previewSegment: null
+            activeNodeId: endNode.id, // Advance cursor
+            previewSegment: null,
+            snapTargetId: null
         })
 
-        get().updatePreview()
+        // If we snapped, we might want to stop building or just update preview
+        if (snapTargetId) {
+            set({ isBuilding: false })
+        } else {
+            get().updatePreview()
+        }
     },
 
     cancelPreview: () => {
         set({ isBuilding: false, previewSegment: null, activeRideId: null, activeNodeId: null })
     },
 
-    removeLastSegment: () => {
-        // Legacy action, might not be needed with deleteSelectedSegment
-        // But useful for "Undo"
-        set((state) => {
-            const { activeRideId, rides } = state
-            if (!activeRideId || !rides[activeRideId]) return state
+    selectSegment: (segmentId) => set({ selectedSegmentId: segmentId }),
 
-            const ride = rides[activeRideId]
-            if (ride.segments.length === 0) return state
-
-            const newSegments = [...ride.segments]
-            const removedSegment = newSegments.pop()
-
-            const newNodes = { ...ride.nodes }
-            if (removedSegment) {
-                delete newNodes[removedSegment.endNodeId]
-            }
-
-            const updatedRide = {
-                ...ride,
-                segments: newSegments,
-                nodes: newNodes
-            }
-
-            return {
-                rides: { ...rides, [activeRideId]: updatedRide }
-            }
-        })
-
-        if (get().isBuilding) {
-            get().updatePreview()
-        }
-    },
-
-    reset: () => set({ rides: {}, activeRideId: null, previewSegment: null, isBuilding: false, activeNodeId: null }),
-
-    closeLoop: () => {
+    deleteSelectedSegment: () => {
         const state = get()
-        const { activeRideId, rides } = state
-        const ride = state.getActiveRide()
-        const lastNode = state.getLastNode()
+        const { selectedSegmentId, rides } = state
+        if (!selectedSegmentId) return
 
-        if (!ride || !lastNode || !activeRideId) return
+        // Find Ride
+        let targetRideId: string | null = null
+        for (const rideId in rides) {
+            if (rides[rideId].segments[selectedSegmentId]) {
+                targetRideId = rideId
+                break
+            }
+        }
+        if (!targetRideId) return
 
-        const startNodeId = `${activeRideId}-node-0`
-        const startNode = ride.nodes[startNodeId]
+        const ride = rides[targetRideId]
+        const segment = ride.segments[selectedSegmentId]
+        const startNode = ride.nodes[segment.startNodeId]
+        const endNode = ride.nodes[segment.endNodeId]
 
-        if (!startNode) return
+        const updatedNodes = { ...ride.nodes }
+        const updatedSegments = { ...ride.segments }
 
-        const p0 = new THREE.Vector3(...lastNode.position)
-        const p3 = new THREE.Vector3(...startNode.position)
-        const dist = p0.distanceTo(p3)
+        // 1. Remove Segment
+        delete updatedSegments[selectedSegmentId]
 
-        const t0 = new THREE.Vector3(...lastNode.tangent)
-        const t3 = new THREE.Vector3(...startNode.tangent)
-
-        const scale = dist * 0.4
-        const p1 = p0.clone().add(t0.clone().multiplyScalar(scale))
-        const p2 = p3.clone().sub(t3.clone().multiplyScalar(scale))
-
-        const controlPoints: [number, number, number][] = [
-            [p0.x, p0.y, p0.z],
-            [p1.x, p1.y, p1.z],
-            [p2.x, p2.y, p2.z],
-            [p3.x, p3.y, p3.z]
-        ]
-
-        const newSegment: TrackSegmentData = {
-            id: uuidv4(),
-            direction: 'STRAIGHT',
-            slope: 'FLAT',
-            startNodeId: lastNode.id,
-            endNodeId: startNode.id,
-            controlPoints,
-            length: dist
+        // 2. Unlink Nodes
+        if (startNode) {
+            updatedNodes[startNode.id] = { ...startNode, outgoingSegmentId: null }
+        }
+        if (endNode) {
+            updatedNodes[endNode.id] = { ...endNode, incomingSegmentId: null }
         }
 
-        const updatedRide = {
-            ...ride,
-            segments: [...ride.segments, newSegment],
-            isComplete: true
+        // 3. Garbage Collection (Remove Isolated Nodes)
+        const nodesToDelete: string[] = []
+
+        if (startNode) {
+            const n = updatedNodes[startNode.id]
+            if (!n.incomingSegmentId && !n.outgoingSegmentId) nodesToDelete.push(n.id)
+        }
+        if (endNode) {
+            const n = updatedNodes[endNode.id]
+            if (!n.incomingSegmentId && !n.outgoingSegmentId) nodesToDelete.push(n.id)
         }
 
-        set({
-            rides: { ...rides, [activeRideId]: updatedRide },
-            previewSegment: null,
-            // Keep activeRideId so modal shows up
-        })
-    },
+        nodesToDelete.forEach(id => delete updatedNodes[id])
 
-    finalizeRide: (name: string) => {
-        const state = get()
-        const { activeRideId, rides } = state
-        if (!activeRideId || !rides[activeRideId]) return
-
-        const ride = rides[activeRideId]
-        let length = 0
-        let maxHeight = 0
-        ride.segments.forEach(s => {
-            length += s.length
-            s.controlPoints.forEach(p => {
-                if (p[1] > maxHeight) maxHeight = p[1]
+        // 4. Check Empty Ride
+        if (Object.keys(updatedNodes).length === 0) {
+            const newRides = { ...rides }
+            delete newRides[targetRideId]
+            set({
+                rides: newRides,
+                selectedSegmentId: null,
+                activeRideId: null,
+                activeNodeId: null,
+                isBuilding: false,
+                placementMode: 'ACTIVE'
             })
-        })
+            return
+        }
 
+        // 5. Update Ride
         const updatedRide = {
             ...ride,
-            name,
-            stats: { ...ride.stats, length, maxHeight }
+            nodes: updatedNodes,
+            segments: updatedSegments,
+            isComplete: false
         }
 
         set({
-            rides: { ...rides, [activeRideId]: updatedRide },
+            rides: { ...rides, [targetRideId]: updatedRide },
+            selectedSegmentId: null
+        })
+    },
+
+    resumeBuilding: (rideId, nodeId) => {
+        set({
+            activeRideId: rideId,
+            activeNodeId: nodeId,
+            isBuilding: true,
+            selectedSegmentId: null
+        })
+        get().updatePreview()
+    },
+
+    getActiveRide: () => {
+        const { rides, activeRideId } = get()
+        if (!activeRideId) return undefined
+        return rides[activeRideId]
+    },
+
+    getLastNode: () => {
+        const { rides, activeRideId, activeNodeId } = get()
+        if (!activeRideId || !activeNodeId) return undefined
+        return rides[activeRideId]?.nodes[activeNodeId]
+    },
+
+    getOpenNodes: () => {
+        const { rides, activeRideId } = get()
+        if (!activeRideId) return []
+        const ride = rides[activeRideId]
+        if (!ride) return []
+
+        const openNodes: { nodeId: string, node: TrackNode, type: 'HEAD' | 'TAIL' }[] = []
+
+        Object.values(ride.nodes).forEach(node => {
+            if (node.incomingSegmentId === null) {
+                openNodes.push({ nodeId: node.id, node, type: 'HEAD' })
+            }
+            if (node.outgoingSegmentId === null) {
+                openNodes.push({ nodeId: node.id, node, type: 'TAIL' })
+            }
+        })
+
+        return openNodes
+    },
+
+    savePark: () => {
+        const state = get()
+        const data = JSON.stringify(state.rides)
+        localStorage.setItem('park_save', data)
+        console.log('Park saved!')
+    },
+
+    loadPark: () => {
+        const data = localStorage.getItem('park_save')
+        if (data) {
+            try {
+                const rides = JSON.parse(data)
+                set({ rides, activeRideId: null, activeNodeId: null, isBuilding: false })
+                console.log('Park loaded!')
+            } catch (e) {
+                console.error('Failed to load park', e)
+            }
+        }
+    },
+
+    exportPark: () => {
+        const state = get()
+        const data = JSON.stringify(state.rides, null, 2)
+        const blob = new Blob([data], { type: 'application/json' })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = 'rollercoaster_park.json'
+        a.click()
+        URL.revokeObjectURL(url)
+    },
+
+    importPark: (jsonContent) => {
+        try {
+            const rides = JSON.parse(jsonContent)
+            set({ rides, activeRideId: null, activeNodeId: null, isBuilding: false })
+        } catch (e) {
+            console.error('Failed to import park', e)
+        }
+    },
+
+    reset: () => {
+        set({
+            rides: {},
             activeRideId: null,
             activeNodeId: null,
+            previewSegment: null,
+            snapTargetId: null,
+            validationError: null,
             isBuilding: false,
-            placementMode: 'INACTIVE'
+            placementMode: 'ACTIVE'
         })
     }
 }))

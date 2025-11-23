@@ -9,8 +9,8 @@ export const TrackBuilder = () => {
         <group>
             {Object.values(rides).map((ride) => (
                 <group key={ride.id}>
-                    {ride.segments.map((segment) => (
-                        <TrackSegment key={segment.id} data={segment} />
+                    {Object.values(ride.segments).map((segment) => (
+                        <TrackSegment key={segment.id} segment={segment} />
                     ))}
                 </group>
             ))}
@@ -18,7 +18,7 @@ export const TrackBuilder = () => {
             {previewSegment && (
                 <TrackSegment
                     key="preview"
-                    data={previewSegment}
+                    segment={previewSegment}
                     isPreview
                 />
             )}

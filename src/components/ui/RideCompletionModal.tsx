@@ -3,17 +3,18 @@ import { useTrackStore } from '../../store/trackStore'
 
 export const RideCompletionModal = () => {
     const activeRide = useTrackStore((state) => state.getActiveRide())
-    const finalizeRide = useTrackStore((state) => state.finalizeRide)
+    const cancelPreview = useTrackStore((state) => state.cancelPreview)
     const [rideName, setRideName] = useState('')
 
     if (!activeRide || !activeRide.isComplete) return null
 
     const handleFinish = () => {
-        finalizeRide(rideName || activeRide.name)
+        // TODO: Update ride name in store
+        cancelPreview() // Close modal and clear active ride
     }
 
     // Calculate stats
-    const totalLength = activeRide.segments.reduce((acc, seg) => acc + seg.length, 0)
+    const totalLength = Object.values(activeRide.segments).reduce((acc, seg) => acc + seg.length, 0)
     const maxHeight = Object.values(activeRide.nodes).reduce((max, node) => Math.max(max, node.position[1]), 0)
 
     return (

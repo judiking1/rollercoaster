@@ -1,21 +1,21 @@
 import { useMemo } from 'react'
 import * as THREE from 'three'
 import { useTrackStore } from '../../store/trackStore'
-import type { TrackSegmentData } from '../../store/trackStore'
+import type { TrackSegment as TrackSegmentType } from '../../store/trackStore'
 
 interface TrackSegmentProps {
-    data: TrackSegmentData
+    segment: TrackSegmentType
     isPreview?: boolean
 }
 
-export const TrackSegment = ({ data, isPreview = false }: TrackSegmentProps) => {
+export const TrackSegment = ({ segment, isPreview = false }: TrackSegmentProps) => {
     const selectedSegmentId = useTrackStore((state) => state.selectedSegmentId)
     const selectSegment = useTrackStore((state) => state.selectSegment)
 
-    const isSelected = selectedSegmentId === data.id
+    const isSelected = selectedSegmentId === segment.id
 
     const { curve } = useMemo(() => {
-        const points = data.controlPoints.map(p => new THREE.Vector3(...p))
+        const points = segment.controlPoints.map(p => new THREE.Vector3(...p))
         const curve = new THREE.CubicBezierCurve3(
             points[0],
             points[1],
@@ -23,14 +23,14 @@ export const TrackSegment = ({ data, isPreview = false }: TrackSegmentProps) => 
             points[3]
         )
         return { curve }
-    }, [data])
+    }, [segment])
 
     return (
         <group
             onClick={(e) => {
                 if (!isPreview) {
                     e.stopPropagation()
-                    selectSegment(data.id)
+                    selectSegment(segment.id)
                 }
             }}
             onPointerMissed={(e) => {
@@ -50,13 +50,6 @@ export const TrackSegment = ({ data, isPreview = false }: TrackSegmentProps) => 
                     emissiveIntensity={isSelected ? 0.5 : 0}
                 />
             </mesh>
-
-            {/* Sleepers (Ties) - Simple visualization */}
-            {!isPreview && (
-                <mesh>
-                    {/* Placeholder for sleepers */}
-                </mesh>
-            )}
         </group>
     )
 }

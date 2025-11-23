@@ -1,6 +1,5 @@
 import * as THREE from 'three'
-import type { TrackNode, TrackDirection, TrackSlope, TrackSegmentData } from '../store/trackStore'
-import { v4 as uuidv4 } from 'uuid'
+import type { TrackNode, TrackDirection, TrackSlope, TrackSegment } from '../store/trackStore'
 
 const GRID_SIZE = 4
 const SLOPE_ANGLE = Math.PI / 6 // 30 degrees
@@ -129,21 +128,12 @@ export const calculateNextTrackSegment = (
         horizontalPathLength = (Math.PI / 2) * GRID_SIZE
     }
 
+
     const heightChange = horizontalPathLength * Math.tan(avgPitch)
 
     const endPos = startPos.clone().add(horizontalDisplacement)
     endPos.y += heightChange
 
-    const endNode: TrackNode = {
-        id: uuidv4(),
-        position: [endPos.x, endPos.y, endPos.z],
-        rotation: [endRot.x, endRot.y, endRot.z, endRot.w],
-        tangent: [endTangent.x, endTangent.y, endTangent.z],
-        normal: [endNormal.x, endNormal.y, endNormal.z]
-    }
-
-    // Control Points
-    // Standard Bezier approximation
     const k = horizontalPathLength * 0.4 // Control point distance factor
 
     const p1 = startPos.clone().add(startTangent.clone().multiplyScalar(k))
@@ -156,12 +146,23 @@ export const calculateNextTrackSegment = (
         [endPos.x, endPos.y, endPos.z]
     ]
 
+    const endNode: TrackNode = {
+        id: 'temp-next-node', // Will be overwritten
+        position: [endPos.x, endPos.y, endPos.z],
+        rotation: [endRot.x, endRot.y, endRot.z, endRot.w],
+        tangent: [endTangent.x, endTangent.y, endTangent.z],
+        // normal: [endNormal.x, endNormal.y, endNormal.z], // Removed in V2
+        outgoingSegmentId: null,
+        incomingSegmentId: null,
+        type: 'NORMAL'
+    }
+
     return { endNode, controlPoints, length: horizontalPathLength }
 }
 
 export const checkCollision = (
     newSegmentPoints: [number, number, number][],
-    existingSegments: TrackSegmentData[],
+    existingSegments: TrackSegment[],
     excludeSegmentIds: string[] = []
 ): boolean => {
     // Strict collision detection: Increased distance threshold

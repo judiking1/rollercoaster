@@ -3,10 +3,9 @@ import { OrbitControls, Grid } from '@react-three/drei'
 import { TrackBuilder } from './TrackBuilder'
 import { GroundGuide } from './GroundGuide'
 import { useTrackStore } from '../../store/trackStore'
-import * as THREE from 'three'
 import { useState } from 'react'
 import { TrackSegment } from './TrackSegment'
-import type { TrackSegmentData } from '../../store/trackStore'
+import type { TrackSegment as TrackSegmentType } from '../../store/trackStore'
 
 const PlacementHandler = () => {
     const placementMode = useTrackStore((state) => state.placementMode)
@@ -17,7 +16,7 @@ const PlacementHandler = () => {
     const [hoverPos, setHoverPos] = useState<[number, number, number] | null>(null)
 
     // Raycasting for placement
-    useThree(({ raycaster, pointer, camera, scene }) => {
+    useThree(({ raycaster, pointer, camera }) => {
         if (placementMode !== 'ACTIVE') return
 
         raycaster.setFromCamera(pointer, camera)
@@ -27,7 +26,7 @@ const PlacementHandler = () => {
     if (placementMode !== 'ACTIVE') return null
 
     // Create a dummy segment data for the ghost
-    let ghostSegmentData: TrackSegmentData | null = null
+    let ghostSegmentData: TrackSegmentType | null = null
 
     if (hoverPos) {
         const rot = placementRotation
@@ -67,7 +66,7 @@ const PlacementHandler = () => {
                     setHoverPos([x, 0, z])
                     setGhostPosition([x, 0, z])
                 }}
-                onClick={(e) => {
+                onClick={() => {
                     if (hoverPos) {
                         createRide(hoverPos)
                     }
@@ -79,7 +78,7 @@ const PlacementHandler = () => {
 
             {/* Ghost Segment */}
             {ghostSegmentData && (
-                <TrackSegment data={ghostSegmentData} isPreview={true} />
+                <TrackSegment segment={ghostSegmentData} isPreview={true} />
             )}
 
             {/* Direction Indicator Arrow */}
