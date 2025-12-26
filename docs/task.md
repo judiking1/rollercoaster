@@ -1,35 +1,33 @@
-# Project: Roller Coaster Tycoon Web (React + Three.js)
+# Tasks
 
-## Phase 1: Initialization & Infrastructure
-- [x] Initialize Vite + React + TypeScript project <!-- id: 0 -->
-- [x] Configure Tailwind CSS and ESLint/Prettier <!-- id: 1 -->
-- [x] Install Three.js ecosystem (R3F, Drei, Leva for debug) <!-- id: 2 -->
-- [x] Set up project directory structure (3D, UI, Store, Hooks) <!-- id: 3 -->
+- [x] **Phase 1: Initial Setup & Fixes**
+    - [x] Fix Tailwind CSS issue
+    - [x] Refactor Track System (V1)
+    - [x] Enhance Track Builder Experience
 
-## Phase 2: Basic Scene & Camera
-- [x] Create main 3D Canvas setup <!-- id: 4 -->
-- [x] Implement OrbitControls for editor view <!-- id: 5 -->
-- [x] Add basic environment (Ground, Sky, Lighting) <!-- id: 6 -->
-- [x] Implement Grid/Snap system for placement <!-- id: 7 -->
+- [x] **Phase 2: Core Features**
+    - [x] Implement JSON Export/Import
+    - [x] Advanced Edit Mode (Gap Filling)
+    - [x] Placement Rotation
 
-## Phase 3: Advanced Track System (Redesign)
-- [x] Design Linked-List Track Data Structure (Nodes & Segments) <!-- id: 8 -->
-- [x] Implement Curve Math (Bezier/Spline generation for turns/slopes) <!-- id: 9 -->
-- [x] Refactor Track Store to use new math <!-- id: 10 -->
-- [x] Update Track Segment Renderer (Tube/Extrude along curve) <!-- id: 11 -->
-- [x] Implement Grid System & Realistic Slopes <!-- id: 12 -->
-- [x] Implement Preview/Ghost Segment System <!-- id: 13 -->
-- [ ] Implement "Close Loop" validation <!-- id: 14 -->
+- [x] **Phase 3: UX & Optimization**
+    - [x] Placement UI & 'R' key
+    - [x] Ride Creation Improvements
+    - [x] Data Optimization (Readable IDs)
 
-## Phase 4: Physics & Simulation
-- [ ] Implement Coaster Cart model <!-- id: 15 -->
-- [ ] Implement Physics Engine (Energy conservation, Gravity) <!-- id: 16 -->
-- [ ] Add "Ride Camera" (First-person view) <!-- id: 17 -->
+- [x] **Phase 4: Simplified Collision & Manual Connection**
+    - [x] Simplify Collision Detection
+    - [x] Manual Node Connection
 
-## Phase 5: Game Loop & State Management
-- [ ] Set up Game Loop (Zustand/Raf) <!-- id: 18 -->
-- [ ] Implement Save/Load functionality <!-- id: 19 -->
+- [x] **Phase 5: Track System V2 Overhaul (Strict Graph)**
+    - [x] **Architecture**: Strict `TrackNode` (incoming/outgoing) and `TrackSegment` types
+    - [x] **Snap-First Preview**: Proactive snapping to open nodes within 10m
+    - [x] **Garbage Collection**: Auto-remove isolated nodes on deletion
+    - [x] **UI Refactor**: Remove "Finish" button, integrate snapping into "Build"
+    - [x] **Bug Fixes**: "0m residual rail" and "Overlap errors" resolved
+    - [x] **Refinement**: Prevent snapping for short rides (< 3 segments)
 
-## Phase 6: Polish & UI
-- [ ] Design Game UI (Toolbar, Info Panels) <!-- id: 20 -->
-- [ ] Optimize Rendering (Instancing) <!-- id: 21 -->
+- [ ] **Phase 6: Future Polish**
+    - [ ] Add banking support
+    - [ ] Improved physics simulation
+    - [ ] Multi-ride support (UI for switching rides)
