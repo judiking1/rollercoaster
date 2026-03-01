@@ -1,25 +1,22 @@
-import { Scene } from './components/3d/Scene'
-import { TrackEditor } from './components/ui/TrackEditor'
+/**
+ * App.tsx — 최상위 라우팅 및 레이아웃
+ * currentScene 상태에 따라 씬을 전환합니다.
+ */
 
-function App() {
-  return (
-    <div className="w-full h-screen bg-gray-900 relative">
-      <Scene />
+import useGameStore from './store/useGameStore.ts';
+import MainMenuScene from './scenes/MainMenuScene.tsx';
+import MapSelectScene from './scenes/MapSelectScene.tsx';
+import GameScene from './scenes/GameScene.tsx';
 
-      {/* UI Overlay */}
-      <div className="absolute top-4 left-4 p-4 bg-white/90 backdrop-blur-sm rounded-lg shadow-lg pointer-events-none select-none">
-        <h1 className="text-xl font-bold text-gray-800">Roller Coaster Tycoon Web</h1>
-        <p className="text-sm text-gray-600">Pre-Alpha Build</p>
-        <div className="mt-2 text-xs text-gray-500">
-          <p>Left Click: Rotate</p>
-          <p>Right Click: Pan</p>
-          <p>Scroll: Zoom</p>
-        </div>
-      </div>
+export default function App() {
+  const currentScene = useGameStore((s) => s.currentScene);
 
-      <TrackEditor />
-    </div>
-  )
+  switch (currentScene) {
+    case 'mainMenu':
+      return <MainMenuScene />;
+    case 'mapSelect':
+      return <MapSelectScene />;
+    case 'game':
+      return <GameScene />;
+  }
 }
-
-export default App
