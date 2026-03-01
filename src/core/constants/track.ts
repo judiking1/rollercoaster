@@ -31,3 +31,12 @@ export const SUPPORT_RADIUS = 0.15;
 
 /** 트랙 클리어런스 반경 (units) */
 export const TRACK_CLEARANCE_RADIUS = 1.5;
+
+/** 터널 아치 반지름 (units) */
+export const TUNNEL_RADIUS = 2.0;
+
+/** 터널 아치 단면 분할 수 */
+export const TUNNEL_ARCH_SEGMENTS = 8;
+
+/** 지형보다 이만큼 아래여야 터널 생성 (units) */
+export const TUNNEL_DETECTION_MARGIN = 0.3;

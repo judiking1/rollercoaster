@@ -11,6 +11,7 @@ import type { ThreeEvent } from '@react-three/fiber';
 import type { Ride, TrackSegment, TrackNode } from '../../../core/types/index.ts';
 import useTrackStore from '../../../store/useTrackStore.ts';
 import useGameStore from '../../../store/useGameStore.ts';
+import { buildCurvePoints } from './trackCurveUtils.ts';
 
 interface TrackPathProps {
   ride: Ride;
@@ -24,50 +25,9 @@ const RAIL_COLORS: Record<string, string> = {
   booster: '#22CC22',
 };
 
-/** 곡선 세그먼트 분할 수 (많을수록 부드러움) */
-const CURVE_DIVISIONS = 12;
 const RAIL_OFFSET = 0.5;
 const RAIL_HEIGHT = 0.15;
 const TIE_INTERVAL = 2; // units
-
-/** 노드의 direction(degrees)으로부터 3D 방향 벡터 생성 */
-function dirToVec3(direction: number): THREE.Vector3 {
-  const rad = (direction * Math.PI) / 180;
-  return new THREE.Vector3(Math.sin(rad), 0, Math.cos(rad));
-}
-
-/** 두 노드 사이의 곡선 포인트 생성 */
-function buildCurvePoints(startNode: TrackNode, endNode: TrackNode): THREE.Vector3[] {
-  const p0 = new THREE.Vector3(startNode.position.x, startNode.position.y, startNode.position.z);
-  const p3 = new THREE.Vector3(endNode.position.x, endNode.position.y, endNode.position.z);
-
-  // 방향이 같으면 직선 보간 (bezier 아티팩트 방지)
-  if (startNode.direction === endNode.direction) {
-    const points: THREE.Vector3[] = [];
-    for (let i = 0; i <= CURVE_DIVISIONS; i++) {
-      const t = i / CURVE_DIVISIONS;
-      points.push(new THREE.Vector3().lerpVectors(p0, p3, t));
-    }
-    return points;
-  }
-
-  const dist = p0.distanceTo(p3);
-  const tangentScale = dist * 0.4;
-
-  const startDir = dirToVec3(startNode.direction);
-  const endDir = dirToVec3(endNode.direction);
-
-  // 제어점: 시작/끝 접선 방향으로 dist*0.4 만큼 연장
-  const p1 = p0.clone().add(startDir.clone().multiplyScalar(tangentScale));
-  // 높이 보간
-  p1.y = p0.y + (p3.y - p0.y) * 0.33;
-
-  const p2 = p3.clone().sub(endDir.clone().multiplyScalar(tangentScale));
-  p2.y = p0.y + (p3.y - p0.y) * 0.67;
-
-  const curve = new THREE.CubicBezierCurve3(p0, p1, p2, p3);
-  return curve.getPoints(CURVE_DIVISIONS);
-}
 
 /** 곡선 위의 t 지점에서 좌/우 레일 위치 및 침목 방향 계산 */
 function computeRailPositions(

@@ -8,7 +8,8 @@ import * as THREE from 'three';
 import type { Ride } from '../../../core/types/index.ts';
 import useTerrainStore from '../../../store/useTerrainStore.ts';
 import useTrackStore from '../../../store/useTrackStore.ts';
-import { GRID_UNIT, SUPPORT_MIN_HEIGHT, SUPPORT_RADIUS } from '../../../core/constants/index.ts';
+import { SUPPORT_MIN_HEIGHT, SUPPORT_RADIUS } from '../../../core/constants/index.ts';
+import { getTerrainHeightAt } from './trackCurveUtils.ts';
 
 interface TrackSupportProps {
   ride: Ride;
@@ -19,33 +20,6 @@ interface SupportPillar {
   z: number;
   topY: number;
   bottomY: number;
-}
-
-/** 지형 높이를 그리드 보간으로 조회 */
-function getTerrainHeightAt(x: number, z: number): number {
-  const state = useTerrainStore.getState();
-  const { gridSize, heightMap } = state;
-  const gxf = x / GRID_UNIT;
-  const gzf = z / GRID_UNIT;
-
-  const gx0 = Math.max(0, Math.min(gridSize.x - 1, Math.floor(gxf)));
-  const gz0 = Math.max(0, Math.min(gridSize.z - 1, Math.floor(gzf)));
-  const gx1 = Math.min(gridSize.x, gx0 + 1);
-  const gz1 = Math.min(gridSize.z, gz0 + 1);
-
-  const tx = gxf - gx0;
-  const tz = gzf - gz0;
-
-  const w = gridSize.x + 1;
-  const h00 = heightMap[gz0 * w + gx0] ?? 0;
-  const h10 = heightMap[gz0 * w + gx1] ?? 0;
-  const h01 = heightMap[gz1 * w + gx0] ?? 0;
-  const h11 = heightMap[gz1 * w + gx1] ?? 0;
-
-  // 이중 선형 보간
-  const h0 = h00 + (h10 - h00) * tx;
-  const h1 = h01 + (h11 - h01) * tx;
-  return h0 + (h1 - h0) * tz;
 }
 
 /** 다른 라이드의 세그먼트와 교차하는지 확인, 교차 시 기둥 하단을 조정 */

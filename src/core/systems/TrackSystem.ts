@@ -253,3 +253,255 @@ export function checkClearanceViolation(
 
   return false; // 위반 없음
 }
+
+// ─── 터널 시스템 ─────────────────────────────────────────
+
+/** 지하 구간 정보 */
+export interface UndergroundSection {
+  startIdx: number;
+  endIdx: number;
+}
+
+/**
+ * 곡선 포인트 배열에서 지형 아래 구간 감지
+ * 각 포인트의 y가 대응하는 terrainHeight - margin보다 낮으면 지하로 판정
+ * 연속된 지하 포인트를 구간으로 묶음 (확장 없음 — 터널은 지하에만 존재)
+ */
+export function detectUndergroundSections(
+  curvePoints: readonly Vector3Data[],
+  terrainHeights: readonly number[],
+  margin: number,
+): UndergroundSection[] {
+  const n = curvePoints.length;
+  if (n === 0) return [];
+
+  const isUnder: boolean[] = [];
+  for (let i = 0; i < n; i++) {
+    isUnder.push(curvePoints[i].y < terrainHeights[i] - margin);
+  }
+
+  const sections: UndergroundSection[] = [];
+  let inSection = false;
+  let startIdx = 0;
+
+  for (let i = 0; i < n; i++) {
+    if (isUnder[i] && !inSection) {
+      startIdx = i;
+      inSection = true;
+    } else if (!isUnder[i] && inSection) {
+      sections.push({ startIdx, endIdx: i - 1 });
+      inSection = false;
+    }
+  }
+  // 마지막 구간이 끝까지 이어지는 경우
+  if (inSection) {
+    sections.push({ startIdx, endIdx: n - 1 });
+  }
+
+  return sections;
+}
+
+/** 2D 프로필 점 */
+export interface ProfilePoint {
+  x: number;
+  y: number;
+}
+
+/**
+ * 터널 아치 단면 2D 프로필 생성 (D자 형태: 바닥 직선 + 반원 아치)
+ * 바닥 Y = -0.5 (레일 아래 여유), 아치 꼭대기 Y = radius - 0.5
+ * 점 순서: 왼쪽 바닥 → 오른쪽 바닥 → 오른쪽 아치 → 꼭대기 → 왼쪽 아치 (닫힌 루프)
+ */
+export function generateArchProfile(
+  radius: number,
+  archSegments: number,
+): ProfilePoint[] {
+  const points: ProfilePoint[] = [];
+  const bottomY = -0.5;
+
+  // 왼쪽 바닥
+  points.push({ x: -radius, y: bottomY });
+  // 오른쪽 바닥
+  points.push({ x: radius, y: bottomY });
+
+  // 오른쪽 바닥 → 꼭대기 → 왼쪽 바닥 (반원 아치)
+  // 각도: 0 (오른쪽) → π (왼쪽), 중심은 (0, bottomY)
+  for (let i = 0; i <= archSegments; i++) {
+    const angle = (i / archSegments) * Math.PI; // 0 → π
+    const px = radius * Math.cos(angle);   // +R → -R
+    const py = bottomY + radius * Math.sin(angle); // bottomY → bottomY+R → bottomY
+    points.push({ x: px, y: py });
+  }
+
+  return points;
+}
+
+/**
+ * Frenet 프레임 계산 헬퍼 (터널 본체/포탈에서 공유)
+ * @returns {fx, fy, fz, rx, ry, rz, ux, uy, uz} 정규화된 forward, right, up 벡터 성분
+ */
+export function computeFrenetFrame(fwd: Vector3Data): {
+  fx: number; fy: number; fz: number;
+  rx: number; ry: number; rz: number;
+  ux: number; uy: number; uz: number;
+} {
+  const fwdLen = Math.sqrt(fwd.x * fwd.x + fwd.y * fwd.y + fwd.z * fwd.z);
+  const fx = fwd.x / fwdLen;
+  const fy = fwd.y / fwdLen;
+  const fz = fwd.z / fwdLen;
+
+  // right = cross(up, forward), up = (0, 1, 0)
+  let rx = -fz;
+  let ry = 0;
+  let rz = fx;
+  const rLen = Math.sqrt(rx * rx + ry * ry + rz * rz);
+  if (rLen > 0.001) {
+    rx /= rLen; ry /= rLen; rz /= rLen;
+  } else {
+    rx = 1; ry = 0; rz = 0;
+  }
+
+  // realUp = cross(forward, right)
+  const ux = fy * rz - fz * ry;
+  const uy = fz * rx - fx * rz;
+  const uz = fx * ry - fy * rx;
+
+  return { fx, fy, fz, rx, ry, rz, ux, uy, uz };
+}
+
+/**
+ * 지하 구간 포인트와 프로필로 터널 tube BufferGeometry 데이터 생성
+ * terrainHeights가 주어지면 지형 위로 튀어나오는 정점을 지형 높이로 클램핑
+ */
+export function buildTunnelGeometryData(
+  sectionPoints: readonly Vector3Data[],
+  forwardVectors: readonly Vector3Data[],
+  profile: readonly ProfilePoint[],
+  terrainHeights?: readonly number[],
+): { positions: Float32Array; normals: Float32Array; indices: Uint32Array } {
+  const numRings = sectionPoints.length;
+  const profileLen = profile.length;
+  const vertCount = numRings * profileLen;
+  const positions = new Float32Array(vertCount * 3);
+  const normals = new Float32Array(vertCount * 3);
+
+  for (let r = 0; r < numRings; r++) {
+    const pt = sectionPoints[r];
+    const frame = computeFrenetFrame(forwardVectors[r]);
+    const terrainY = terrainHeights ? terrainHeights[r] : Infinity;
+
+    for (let p = 0; p < profileLen; p++) {
+      const px = profile[p].x;
+      const py = profile[p].y;
+
+      const vi = (r * profileLen + p) * 3;
+      const worldX = pt.x + frame.rx * px + frame.ux * py;
+      let worldY = pt.y + frame.ry * px + frame.uy * py;
+      const worldZ = pt.z + frame.rz * px + frame.uz * py;
+
+      // 지형 위로 돌출되는 정점을 클램핑 (약간 아래로)
+      if (worldY > terrainY - 0.05) {
+        worldY = terrainY - 0.05;
+      }
+
+      positions[vi] = worldX;
+      positions[vi + 1] = worldY;
+      positions[vi + 2] = worldZ;
+
+      const nx = frame.rx * px + frame.ux * py;
+      const ny = frame.ry * px + frame.uy * py;
+      const nz = frame.rz * px + frame.uz * py;
+      const nLen = Math.sqrt(nx * nx + ny * ny + nz * nz);
+      if (nLen > 0.001) {
+        normals[vi] = nx / nLen;
+        normals[vi + 1] = ny / nLen;
+        normals[vi + 2] = nz / nLen;
+      }
+    }
+  }
+
+  // 인덱스: 인접 링 사이를 삼각형으로 연결
+  const quads = (numRings - 1) * (profileLen - 1);
+  const indices = new Uint32Array(quads * 6);
+  let idx = 0;
+
+  for (let r = 0; r < numRings - 1; r++) {
+    for (let p = 0; p < profileLen - 1; p++) {
+      const a = r * profileLen + p;
+      const b = r * profileLen + p + 1;
+      const c = (r + 1) * profileLen + p;
+      const d = (r + 1) * profileLen + p + 1;
+
+      indices[idx++] = a;
+      indices[idx++] = b;
+      indices[idx++] = c;
+
+      indices[idx++] = b;
+      indices[idx++] = d;
+      indices[idx++] = c;
+    }
+  }
+
+  return { positions, normals, indices };
+}
+
+/**
+ * 터널 포탈(입구/출구) 아치형 면 geometry 데이터 생성
+ * Fan triangulation: 중심점에서 프로필 각 점으로 삼각형 생성
+ * terrainY로 상단 정점을 클램핑하여 지형 위로 튀어나오지 않게 함
+ */
+export function buildPortalGeometryData(
+  position: Vector3Data,
+  forward: Vector3Data,
+  profile: readonly ProfilePoint[],
+  terrainY: number,
+): { positions: Float32Array; normals: Float32Array; indices: Uint32Array } {
+  const profileLen = profile.length;
+  const frame = computeFrenetFrame(forward);
+
+  // 정점: 중심(0번) + 프로필 점들(1~profileLen)
+  const vertCount = 1 + profileLen;
+  const positions = new Float32Array(vertCount * 3);
+  const normals = new Float32Array(vertCount * 3);
+
+  // 중심점
+  positions[0] = position.x;
+  positions[1] = position.y;
+  positions[2] = position.z;
+  normals[0] = frame.fx;
+  normals[1] = frame.fy;
+  normals[2] = frame.fz;
+
+  // 프로필 점들을 월드 좌표로 변환
+  for (let i = 0; i < profileLen; i++) {
+    const px = profile[i].x;
+    const py = profile[i].y;
+    const vi = (1 + i) * 3;
+    const worldX = position.x + frame.rx * px + frame.ux * py;
+    let worldY = position.y + frame.ry * px + frame.uy * py;
+    const worldZ = position.z + frame.rz * px + frame.uz * py;
+
+    // 지형 위로 돌출되는 정점 클램핑
+    if (worldY > terrainY - 0.05) {
+      worldY = terrainY - 0.05;
+    }
+
+    positions[vi] = worldX;
+    positions[vi + 1] = worldY;
+    positions[vi + 2] = worldZ;
+    normals[vi] = frame.fx;
+    normals[vi + 1] = frame.fy;
+    normals[vi + 2] = frame.fz;
+  }
+
+  // Fan triangulation: 중심 → 프로필[i] → 프로필[i+1]
+  const triCount = profileLen - 1;
+  const indices = new Uint32Array(triCount * 3);
+  for (let i = 0; i < triCount; i++) {
+    indices[i * 3] = 0;
+    indices[i * 3 + 1] = 1 + i;
+    indices[i * 3 + 2] = 1 + i + 1;
+  }
+
+  return { positions, normals, indices };
+}
