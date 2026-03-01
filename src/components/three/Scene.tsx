@@ -14,6 +14,7 @@ import Terrain from './terrain/Terrain.tsx';
 import Station from './ride/Station.tsx';
 import TrackPath from './track/TrackPath.tsx';
 import TrackPreview from './track/TrackPreview.tsx';
+import TrackSupport from './track/TrackSupport.tsx';
 import useGameStore from '../../store/useGameStore.ts';
 import useTerrainStore from '../../store/useTerrainStore.ts';
 import useTrackStore from '../../store/useTrackStore.ts';
@@ -129,6 +130,7 @@ export default function Scene() {
         <group key={ride.id}>
           <Station ride={ride} />
           <TrackPath ride={ride} />
+          <TrackSupport ride={ride} />
         </group>
       ))}
 

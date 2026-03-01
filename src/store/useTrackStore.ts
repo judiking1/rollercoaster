@@ -19,12 +19,14 @@ import {
   createStationNodes,
   createStationSegment,
   checkCollision,
+  checkClearanceViolation,
   distance3D,
 } from '../core/systems/TrackSystem.ts';
 import {
   COLLISION_MIN_DISTANCE,
   MAX_SEGMENTS_PER_RIDE,
   SNAP_RADIUS,
+  TRACK_CLEARANCE_RADIUS,
 } from '../core/constants/index.ts';
 
 interface TrackStoreState {
@@ -50,6 +52,7 @@ interface TrackStoreActions {
   setSelectedRide: (rideId: string | null) => void;
   renameRide: (rideId: string, name: string) => void;
   resumeBuilding: (rideId: string) => void;
+  reopenRide: (rideId: string) => void;
 
   // 트랙 건설
   addSegment: (rideId: string) => boolean;
@@ -160,6 +163,52 @@ const useTrackStore = create<TrackStoreState & TrackStoreActions>()((set, get) =
     });
   },
 
+  reopenRide: (rideId) => {
+    const s = get();
+    const ride = s.rides[rideId];
+    if (!ride || !ride.isComplete) return;
+
+    // 폐쇄 세그먼트 찾기: station_start 노드의 prevSegmentId
+    const stationStartNode = Object.values(ride.nodes).find((n) => n.type === 'station_start');
+    if (!stationStartNode || !stationStartNode.prevSegmentId) return;
+
+    const closeSegId = stationStartNode.prevSegmentId;
+    const closeSeg = ride.segments[closeSegId];
+    if (!closeSeg) return;
+
+    // 폐쇄 세그먼트의 시작 노드가 새로운 headNode
+    const newHeadNodeId = closeSeg.startNodeId;
+    const headNode = ride.nodes[newHeadNodeId];
+    if (!headNode) return;
+
+    // 노드 링크 해제
+    const updatedStartNode: TrackNode = { ...stationStartNode, prevSegmentId: null };
+    const updatedHeadNode: TrackNode = { ...headNode, nextSegmentId: null };
+
+    // 폐쇄 세그먼트 삭제
+    const newSegments = { ...ride.segments };
+    delete newSegments[closeSegId];
+
+    const updatedRide: Ride = {
+      ...ride,
+      nodes: {
+        ...ride.nodes,
+        [stationStartNode.id]: updatedStartNode,
+        [newHeadNodeId]: updatedHeadNode,
+      },
+      segments: newSegments,
+      headNodeId: newHeadNodeId,
+      isComplete: false,
+    };
+
+    set({
+      rides: { ...s.rides, [rideId]: updatedRide },
+      activeRideId: rideId,
+      selectedRideId: null,
+      builderMode: 'building',
+    });
+  },
+
   // ─── 트랙 건설 ────────────────────────────────────────
 
   addSegment: (rideId) => {
@@ -241,6 +290,28 @@ const useTrackStore = create<TrackStoreState & TrackStoreActions>()((set, get) =
       return false;
     }
     if (checkCollision(nextPos, allOtherNodes, [], COLLISION_MIN_DISTANCE)) {
+      return false;
+    }
+
+    // 클리어런스 검사: 새 세그먼트가 기존 세그먼트와 너무 가까운지 확인
+    const existingSegs: Array<{ startPos: { x: number; y: number; z: number }; endPos: { x: number; y: number; z: number } }> = [];
+    // 현재 라이드의 기존 세그먼트 (headNode와 연결된 세그먼트는 제외 — 당연히 인접함)
+    for (const seg of Object.values(ride.segments)) {
+      if (seg.endNodeId === headNode.id || seg.startNodeId === headNode.id) continue;
+      const sn = ride.nodes[seg.startNodeId];
+      const en = ride.nodes[seg.endNodeId];
+      if (sn && en) existingSegs.push({ startPos: sn.position, endPos: en.position });
+    }
+    // 다른 라이드의 세그먼트
+    for (const [rid, r] of Object.entries(s.rides)) {
+      if (rid === rideId) continue;
+      for (const seg of Object.values(r.segments)) {
+        const sn = r.nodes[seg.startNodeId];
+        const en = r.nodes[seg.endNodeId];
+        if (sn && en) existingSegs.push({ startPos: sn.position, endPos: en.position });
+      }
+    }
+    if (checkClearanceViolation(headNode.position, nextPos, existingSegs, TRACK_CLEARANCE_RADIUS)) {
       return false;
     }
 

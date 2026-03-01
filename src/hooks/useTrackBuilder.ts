@@ -16,7 +16,7 @@ import {
   STATION_ROTATION_STEP,
   COLLISION_MIN_DISTANCE,
 } from '../core/constants/index.ts';
-import { directionToVector, distance3D } from '../core/systems/TrackSystem.ts';
+import { directionToVector, distance3D, stationToOBB, obbOverlap } from '../core/systems/TrackSystem.ts';
 
 /** 지형 위 월드 좌표를 그리드 스냅 */
 function snapToGrid(worldX: number, worldZ: number): { x: number; z: number } {
@@ -104,6 +104,16 @@ function checkStationValid(
         return false;
       }
     }
+  }
+
+  // 정거장 OBB 겹침 검사
+  const newOBB = stationToOBB({
+    position: startPos,
+    direction,
+    length: DEFAULT_STATION_LENGTH,
+  });
+  for (const ride of Object.values(rides)) {
+    if (obbOverlap(newOBB, stationToOBB(ride.station))) return false;
   }
 
   return true;

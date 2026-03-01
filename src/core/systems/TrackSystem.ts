@@ -144,6 +144,59 @@ export function checkCollision(
   return false;
 }
 
+// ─── 정거장 OBB 충돌 ─────────────────────────────────────
+
+/** 2D Oriented Bounding Box (XZ 평면) */
+export interface OBB2D {
+  cx: number; cz: number;  // 중심
+  hw: number; hd: number;  // half-width, half-depth
+  axisX: { x: number; z: number };  // 로컬 X축
+  axisZ: { x: number; z: number };  // 로컬 Z축 (진행 방향)
+}
+
+/** 정거장 정보로부터 2D OBB 생성 */
+export function stationToOBB(station: Station): OBB2D {
+  const vec = directionToVector(station.direction);
+  const totalLength = station.length * SEGMENT_LENGTH;
+
+  // 중심 = 시작점 + 방향 * 길이/2
+  const cx = station.position.x + vec.x * totalLength / 2;
+  const cz = station.position.z + vec.z * totalLength / 2;
+
+  // 진행 방향축 (Z축)
+  const axisZ = { x: vec.x, z: vec.z };
+  // 직교 방향축 (X축): forward × up
+  const axisX = { x: vec.z, z: -vec.x };
+
+  return {
+    cx, cz,
+    hw: 1.25, // 정거장 반폭 (platformWidth / 2)
+    hd: totalLength / 2, // 정거장 반깊이
+    axisX,
+    axisZ,
+  };
+}
+
+/** 2D SAT(Separating Axis Theorem)로 두 OBB 겹침 검사 */
+export function obbOverlap(a: OBB2D, b: OBB2D): boolean {
+  const axes = [a.axisX, a.axisZ, b.axisX, b.axisZ];
+  const dx = b.cx - a.cx;
+  const dz = b.cz - a.cz;
+
+  for (const axis of axes) {
+    const projD = Math.abs(dx * axis.x + dz * axis.z);
+    const projA =
+      Math.abs(a.hw * (a.axisX.x * axis.x + a.axisX.z * axis.z)) +
+      Math.abs(a.hd * (a.axisZ.x * axis.x + a.axisZ.z * axis.z));
+    const projB =
+      Math.abs(b.hw * (b.axisX.x * axis.x + b.axisX.z * axis.z)) +
+      Math.abs(b.hd * (b.axisZ.x * axis.x + b.axisZ.z * axis.z));
+
+    if (projD > projA + projB) return false; // 분리축 발견
+  }
+  return true; // 분리축 없음 → 겹침
+}
+
 /** 새 위치가 정거장 시작 노드에 스냅 가능한지 검사 */
 export function checkSnapToStation(
   newPos: Vector3Data,
@@ -151,4 +204,52 @@ export function checkSnapToStation(
   snapRadius: number,
 ): boolean {
   return distance3D(newPos, stationStartNode.position) < snapRadius;
+}
+
+// ─── 클리어런스 검사 ─────────────────────────────────────
+
+/** 두 점 사이에 샘플 포인트 생성 */
+function samplePoints(a: Vector3Data, b: Vector3Data, count: number): Vector3Data[] {
+  const pts: Vector3Data[] = [];
+  for (let i = 0; i <= count; i++) {
+    const t = i / count;
+    pts.push({
+      x: a.x + (b.x - a.x) * t,
+      y: a.y + (b.y - a.y) * t,
+      z: a.z + (b.z - a.z) * t,
+    });
+  }
+  return pts;
+}
+
+/** 새 세그먼트 경로가 기존 세그먼트들과 클리어런스 위반인지 검사 */
+export function checkClearanceViolation(
+  newStartPos: Vector3Data,
+  newEndPos: Vector3Data,
+  existingSegments: ReadonlyArray<{ startPos: Vector3Data; endPos: Vector3Data }>,
+  clearanceRadius: number,
+): boolean {
+  const newSamples = samplePoints(newStartPos, newEndPos, 4);
+
+  for (const seg of existingSegments) {
+    const existSamples = samplePoints(seg.startPos, seg.endPos, 4);
+
+    for (const np of newSamples) {
+      for (const ep of existSamples) {
+        const dx = np.x - ep.x;
+        const dz = np.z - ep.z;
+        const horizDist = Math.sqrt(dx * dx + dz * dz);
+
+        // 수평 거리가 가까운 경우에만 높이 차이 검사
+        if (horizDist < clearanceRadius) {
+          const dy = Math.abs(np.y - ep.y);
+          if (dy < clearanceRadius) {
+            return true; // 클리어런스 위반
+          }
+        }
+      }
+    }
+  }
+
+  return false; // 위반 없음
 }

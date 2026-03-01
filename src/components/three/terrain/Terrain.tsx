@@ -19,10 +19,8 @@ import {
   calculateNormals,
   generateIndices,
   generateVertexColors,
-  generateTrackAlpha,
 } from '../../../core/systems/TerrainSystem.ts';
 import { GRID_UNIT } from '../../../core/constants/index.ts';
-import type { Vector3Data } from '../../../core/types/index.ts';
 import GridOverlay from './GridOverlay.tsx';
 import TerrainCursor from './TerrainCursor.tsx';
 
@@ -33,7 +31,9 @@ export default function Terrain() {
   const gridSize = useTerrainStore((s) => s.gridSize);
   const isInitialized = useTerrainStore((s) => s.isInitialized);
   const gameMode = useGameStore((s) => s.gameMode);
+  const isXRayMode = useGameStore((s) => s.isXRayMode);
   const rides = useTrackStore((s) => s.rides);
+  const builderMode = useTrackStore((s) => s.builderMode);
 
   const {
     subSelection,
@@ -49,16 +49,8 @@ export default function Terrain() {
     stationPreview,
   } = useTrackBuilder();
 
-  // 모든 라이드 노드의 위치 수집
-  const trackPositions = useMemo((): Vector3Data[] => {
-    const positions: Vector3Data[] = [];
-    for (const ride of Object.values(rides)) {
-      for (const node of Object.values(ride.nodes)) {
-        positions.push(node.position);
-      }
-    }
-    return positions;
-  }, [rides]);
+  // 트랙 존재 여부 (X-Ray 모드 판단용)
+  const hasTrack = useMemo(() => Object.keys(rides).length > 0, [rides]);
 
   const indices = useMemo(() => {
     if (!isInitialized) return null;
@@ -72,12 +64,10 @@ export default function Terrain() {
     const positions = generatePositions(heightMap, gridSize, GRID_UNIT);
     const normals = calculateNormals(heightMap, gridSize, GRID_UNIT);
     const colors = generateVertexColors(heightMap);
-    const alpha = generateTrackAlpha(heightMap, gridSize, trackPositions, GRID_UNIT, 2.0);
 
     geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
     geo.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
     geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-    geo.setAttribute('alpha', new THREE.BufferAttribute(alpha, 1));
 
     if (indices) {
       geo.setIndex(new THREE.BufferAttribute(indices, 1));
@@ -85,13 +75,15 @@ export default function Terrain() {
 
     geo.computeBoundingSphere();
 
-    // 머티리얼에 onBeforeCompile을 사용하여 정점 알파 적용
+    // X-Ray 모드: 전체 지형 반투명 (빌딩 중이거나 수동 토글)
     const mat = materialRef.current;
     if (mat) {
-      mat.transparent = trackPositions.length > 0;
+      const shouldXRay = (isXRayMode || builderMode === 'building') && hasTrack;
+      mat.transparent = shouldXRay;
+      mat.opacity = shouldXRay ? 0.35 : 1.0;
       mat.needsUpdate = true;
     }
-  }, [heightMap, gridSize, indices, isInitialized, trackPositions]);
+  }, [heightMap, gridSize, indices, isInitialized, hasTrack, isXRayMode, builderMode]);
 
   // 통합 포인터 핸들러
   const handlePointerMove = useCallback((e: ThreeEvent<PointerEvent>) => {
@@ -149,23 +141,6 @@ export default function Terrain() {
           polygonOffset
           polygonOffsetFactor={1}
           polygonOffsetUnits={1}
-          onBeforeCompile={(shader) => {
-            // 정점 알파 어트리뷰트를 프래그먼트 셰이더로 전달
-            shader.vertexShader = shader.vertexShader
-              .replace(
-                'void main() {',
-                'attribute float alpha;\nvarying float vAlpha;\nvoid main() {\n  vAlpha = alpha;',
-              );
-            shader.fragmentShader = shader.fragmentShader
-              .replace(
-                'void main() {',
-                'varying float vAlpha;\nvoid main() {',
-              )
-              .replace(
-                '#include <dithering_fragment>',
-                '#include <dithering_fragment>\n  gl_FragColor.a *= vAlpha;',
-              );
-          }}
         />
       </mesh>
       <GridOverlay />

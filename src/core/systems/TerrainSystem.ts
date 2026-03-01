@@ -440,9 +440,8 @@ export function generateIndices(gridSize: GridSize): Uint32Array {
 }
 
 /**
- * 높이 기반 정점 컬러 생성 (color attribute, RGBA)
+ * 높이 기반 정점 컬러 생성 (color attribute, RGB)
  * 낮은 곳: 어두운 초록 → 높은 곳: 밝은 초록/갈색
- * trackPositions가 주어지면 트랙 근처 정점의 알파를 낮춤
  */
 export function generateVertexColors(
   heightMap: readonly number[],
@@ -471,53 +470,6 @@ export function generateVertexColors(
   }
 
   return colors;
-}
-
-/**
- * 트랙 근처 정점의 알파를 계산하여 Float32Array로 반환
- * 트랙 노드와 가까운 정점일수록 알파가 낮아짐 (투명해짐)
- */
-export function generateTrackAlpha(
-  heightMap: readonly number[],
-  gridSize: GridSize,
-  trackPositions: readonly { x: number; y: number; z: number }[],
-  gridUnit: number = GRID_UNIT,
-  fadeRadius: number = 2.0,
-): Float32Array {
-  const cols = gridSize.x + 1;
-  const rows = gridSize.z + 1;
-  const count = cols * rows;
-  const alpha = new Float32Array(count).fill(1.0);
-
-  if (trackPositions.length === 0) return alpha;
-
-  for (let z = 0; z < rows; z++) {
-    for (let x = 0; x < cols; x++) {
-      const idx = z * cols + x;
-      const vx = x * gridUnit;
-      const vy = heightMap[idx];
-      const vz = z * gridUnit;
-
-      let minDist = Infinity;
-      for (const tp of trackPositions) {
-        // 트랙 노드가 지형 높이 이하에 있는 경우만 투명 처리
-        if (tp.y < vy + 0.5) {
-          const dx = vx - tp.x;
-          const dz = vz - tp.z;
-          const dist = Math.sqrt(dx * dx + dz * dz);
-          if (dist < minDist) minDist = dist;
-        }
-      }
-
-      if (minDist < fadeRadius) {
-        // fadeRadius 내에서 선형 보간: 0 → 1 (가까울수록 투명)
-        const t = minDist / fadeRadius;
-        alpha[idx] = Math.max(0.15, t);
-      }
-    }
-  }
-
-  return alpha;
 }
 
 /**

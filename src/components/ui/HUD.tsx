@@ -17,6 +17,9 @@ export default function HUD() {
   const saveMap = useMapStore((s) => s.saveMap);
   const closeMap = useMapStore((s) => s.closeMap);
 
+  const isXRayMode = useGameStore((s) => s.isXRayMode);
+  const toggleXRay = useGameStore((s) => s.toggleXRay);
+
   const { startBuilder, builderMode } = useTrackBuilder();
   const setSelectedRide = useTrackStore((s) => s.setSelectedRide);
 
@@ -83,6 +86,19 @@ export default function HUD() {
           }`}
         >
           트랙 빌더
+        </button>
+        <button
+          onClick={toggleXRay}
+          disabled={isTrackActive || gameMode === 'terrain'}
+          className={`pointer-events-auto rounded-lg px-4 py-2 text-sm font-medium backdrop-blur-sm transition ${
+            isXRayMode
+              ? 'bg-purple-500 text-white'
+              : isTrackActive || gameMode === 'terrain'
+                ? 'cursor-not-allowed bg-slate-700/60 text-gray-500'
+                : 'bg-slate-600/80 text-white hover:bg-slate-500'
+          }`}
+        >
+          X-Ray
         </button>
         <button
           onClick={handleSave}

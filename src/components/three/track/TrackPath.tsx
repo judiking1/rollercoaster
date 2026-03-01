@@ -41,6 +41,16 @@ function buildCurvePoints(startNode: TrackNode, endNode: TrackNode): THREE.Vecto
   const p0 = new THREE.Vector3(startNode.position.x, startNode.position.y, startNode.position.z);
   const p3 = new THREE.Vector3(endNode.position.x, endNode.position.y, endNode.position.z);
 
+  // 방향이 같으면 직선 보간 (bezier 아티팩트 방지)
+  if (startNode.direction === endNode.direction) {
+    const points: THREE.Vector3[] = [];
+    for (let i = 0; i <= CURVE_DIVISIONS; i++) {
+      const t = i / CURVE_DIVISIONS;
+      points.push(new THREE.Vector3().lerpVectors(p0, p3, t));
+    }
+    return points;
+  }
+
   const dist = p0.distanceTo(p3);
   const tangentScale = dist * 0.4;
 
@@ -48,11 +58,11 @@ function buildCurvePoints(startNode: TrackNode, endNode: TrackNode): THREE.Vecto
   const endDir = dirToVec3(endNode.direction);
 
   // 제어점: 시작/끝 접선 방향으로 dist*0.4 만큼 연장
-  const p1 = p0.clone().add(startDir.multiplyScalar(tangentScale));
+  const p1 = p0.clone().add(startDir.clone().multiplyScalar(tangentScale));
   // 높이 보간
   p1.y = p0.y + (p3.y - p0.y) * 0.33;
 
-  const p2 = p3.clone().sub(endDir.multiplyScalar(tangentScale));
+  const p2 = p3.clone().sub(endDir.clone().multiplyScalar(tangentScale));
   p2.y = p0.y + (p3.y - p0.y) * 0.67;
 
   const curve = new THREE.CubicBezierCurve3(p0, p1, p2, p3);
@@ -138,7 +148,12 @@ function CurveSegment({ segment, startNode, endNode, colorOverride }: {
 
         const q = new THREE.Quaternion();
         const tieForward = new THREE.Vector3().subVectors(points[i + 1], points[i]).normalize();
-        q.setFromUnitVectors(new THREE.Vector3(0, 0, 1), tieForward);
+        // 우측 = up × forward (right-handed basis)
+        const tieRight = new THREE.Vector3().crossVectors(new THREE.Vector3(0, 1, 0), tieForward).normalize();
+        // 실제 up = forward × right (경사 반영)
+        const realUp = new THREE.Vector3().crossVectors(tieForward, tieRight).normalize();
+        const mat = new THREE.Matrix4().makeBasis(tieRight, realUp, tieForward);
+        q.setFromRotationMatrix(mat);
 
         ties.push({ position: pos, quaternion: q });
         nextTieDist += TIE_INTERVAL;

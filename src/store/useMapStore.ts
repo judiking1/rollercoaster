@@ -121,12 +121,13 @@ const useMapStore = create<MapState & MapActions>()((set, get) => ({
     );
     saveMapList(newList);
 
-    // currentMapData도 rides 동기화하여 갱신
+    // currentMapData에 terrain + rides 동기화하여 갱신
     set({
       savedMaps: newList,
       currentMapData: {
         ...currentMapData,
         meta: { ...currentMapData.meta, updatedAt },
+        terrain,
         rides,
       },
     });

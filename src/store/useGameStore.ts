@@ -9,21 +9,25 @@ import type { SceneType, GameMode } from '../core/types/index.ts';
 interface GameState {
   currentScene: SceneType;
   gameMode: GameMode;
+  isXRayMode: boolean;
 }
 
 interface GameActions {
   setScene: (scene: SceneType) => void;
   setGameMode: (mode: GameMode) => void;
+  toggleXRay: () => void;
 }
 
 const useGameStore = create<GameState & GameActions>()((set) => ({
   // --- State ---
   currentScene: 'mainMenu',
   gameMode: 'view',
+  isXRayMode: false,
 
   // --- Actions ---
   setScene: (scene) => set({ currentScene: scene }),
   setGameMode: (mode) => set({ gameMode: mode }),
+  toggleXRay: () => set((s) => ({ isXRayMode: !s.isXRayMode })),
 }));
 
 export default useGameStore;

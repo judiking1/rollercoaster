@@ -13,6 +13,7 @@ export default function RideInfoPanel() {
   const setSelectedRide = useTrackStore((s) => s.setSelectedRide);
   const renameRide = useTrackStore((s) => s.renameRide);
   const resumeBuilding = useTrackStore((s) => s.resumeBuilding);
+  const reopenRide = useTrackStore((s) => s.reopenRide);
   const deleteRide = useTrackStore((s) => s.deleteRide);
   const setGameMode = useGameStore((s) => s.setGameMode);
 
@@ -33,9 +34,15 @@ export default function RideInfoPanel() {
 
   const handleEdit = useCallback(() => {
     if (!selectedRideId) return;
+    const ride = rides[selectedRideId];
+    if (!ride) return;
     setGameMode('track');
-    resumeBuilding(selectedRideId);
-  }, [selectedRideId, setGameMode, resumeBuilding]);
+    if (ride.isComplete) {
+      reopenRide(selectedRideId);
+    } else {
+      resumeBuilding(selectedRideId);
+    }
+  }, [selectedRideId, rides, setGameMode, resumeBuilding, reopenRide]);
 
   const handleDelete = useCallback(() => {
     if (!selectedRideId) return;
@@ -139,14 +146,12 @@ export default function RideInfoPanel() {
 
         {/* 액션 버튼 */}
         <div className="flex gap-2">
-          {!ride.isComplete && (
-            <button
-              onClick={handleEdit}
-              className="flex-1 rounded bg-blue-600 px-3 py-1.5 text-sm font-medium hover:bg-blue-500"
-            >
-              편집
-            </button>
-          )}
+          <button
+            onClick={handleEdit}
+            className="flex-1 rounded bg-blue-600 px-3 py-1.5 text-sm font-medium hover:bg-blue-500"
+          >
+            편집
+          </button>
           <button
             onClick={handleDelete}
             className="rounded bg-red-600/80 px-3 py-1.5 text-sm hover:bg-red-500"

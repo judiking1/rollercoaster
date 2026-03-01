@@ -22,3 +22,12 @@ export const MAX_SEGMENTS_PER_RIDE = 500;
 
 /** 정거장 배치 방향 회전 단위 (degrees) */
 export const STATION_ROTATION_STEP = 90;
+
+/** 지지대 기둥 최소 높이 (이하면 기둥 생략) */
+export const SUPPORT_MIN_HEIGHT = 0.5;
+
+/** 지지대 기둥 반지름 */
+export const SUPPORT_RADIUS = 0.15;
+
+/** 트랙 클리어런스 반경 (units) */
+export const TRACK_CLEARANCE_RADIUS = 1.5;
