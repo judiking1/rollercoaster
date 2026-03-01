@@ -21,6 +21,7 @@ import {
   removeMapData,
 } from '../core/utils/storage.ts';
 import useTerrainStore from './useTerrainStore.ts';
+import useTrackStore from './useTrackStore.ts';
 
 interface MapState {
   savedMaps: SavedMapEntry[];
@@ -101,11 +102,15 @@ const useMapStore = create<MapState & MapActions>()((set, get) => ({
       ? { heightMap: terrainState.heightMap }
       : currentMapData.terrain;
 
+    // 트랙 스토어에서 현재 놀이기구 데이터 가져오기
+    const trackState = useTrackStore.getState();
+    const rides = Object.values(trackState.rides);
+
     const jsonString = serializeMap({
       meta: currentMapData.meta,
       settings: currentMapData.settings,
       terrain,
-      rides: currentMapData.rides,
+      rides,
     });
     saveMapData(currentMapId, jsonString);
 
@@ -116,11 +121,13 @@ const useMapStore = create<MapState & MapActions>()((set, get) => ({
     );
     saveMapList(newList);
 
+    // currentMapData도 rides 동기화하여 갱신
     set({
       savedMaps: newList,
       currentMapData: {
         ...currentMapData,
         meta: { ...currentMapData.meta, updatedAt },
+        rides,
       },
     });
   },

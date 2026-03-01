@@ -26,8 +26,14 @@ export type {
 export type {
   SegmentType,
   SpecialType,
+  TrackNodeType,
+  TrackNode,
   TrackSegment,
   Station,
+  RideCounters,
+  Ride,
+  TrackBuilderMode,
+  TrackPreviewData,
 } from './track.ts';
 export { SEGMENT_TYPES, SPECIAL_TYPES } from './track.ts';
 

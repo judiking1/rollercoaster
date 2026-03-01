@@ -1,8 +1,8 @@
 /**
  * Scene.tsx — 메인 3D 씬 컨테이너
  * CameraControls 기반: 모든 모드에서 우클릭=회전, 중클릭=팬, 휠=줌
- * terrain 모드에서는 좌클릭이 편집용이므로 카메라에서 비활성화
- * WASD 키보드로 카메라 이동 가능 (terrain 모드 대응)
+ * terrain/track 모드에서는 좌클릭이 편집용이므로 카메라에서 비활성화
+ * WASD 키보드로 카메라 이동 가능
  */
 
 import { useRef, useEffect } from 'react';
@@ -11,8 +11,12 @@ import { CameraControls } from '@react-three/drei';
 import CameraControlsImpl from 'camera-controls';
 import Lighting from './Lighting.tsx';
 import Terrain from './terrain/Terrain.tsx';
+import Station from './ride/Station.tsx';
+import TrackPath from './track/TrackPath.tsx';
+import TrackPreview from './track/TrackPreview.tsx';
 import useGameStore from '../../store/useGameStore.ts';
 import useTerrainStore from '../../store/useTerrainStore.ts';
+import useTrackStore from '../../store/useTrackStore.ts';
 import { GRID_UNIT, CAMERA_PAN_SPEED } from '../../core/constants/index.ts';
 
 export default function Scene() {
@@ -20,6 +24,7 @@ export default function Scene() {
   const gameMode = useGameStore((s) => s.gameMode);
   const gridSize = useTerrainStore((s) => s.gridSize);
   const isInitialized = useTerrainStore((s) => s.isInitialized);
+  const rides = useTrackStore((s) => s.rides);
 
   // WASD 키 상태 추적
   const keysPressed = useRef<Set<string>>(new Set());
@@ -29,13 +34,11 @@ export default function Scene() {
     const controls = controlsRef.current;
     if (!controls) return;
 
-    if (gameMode === 'terrain') {
-      // terrain 모드: 좌클릭=편집(카메라 비활성), 우클릭=회전, 중클릭=팬
+    if (gameMode === 'terrain' || gameMode === 'track') {
       controls.mouseButtons.left = CameraControlsImpl.ACTION.NONE;
       controls.mouseButtons.right = CameraControlsImpl.ACTION.ROTATE;
       controls.mouseButtons.middle = CameraControlsImpl.ACTION.TRUCK;
     } else {
-      // view 모드: 좌클릭=회전, 우클릭=회전, 중클릭=팬
       controls.mouseButtons.left = CameraControlsImpl.ACTION.ROTATE;
       controls.mouseButtons.right = CameraControlsImpl.ACTION.ROTATE;
       controls.mouseButtons.middle = CameraControlsImpl.ACTION.TRUCK;
@@ -52,15 +55,14 @@ export default function Scene() {
     const mapDiagonal = Math.max(gridSize.x, gridSize.z) * GRID_UNIT;
     const cameraDistance = mapDiagonal * 0.6;
 
-    // 카메라 위치: 맵 중앙에서 비스듬히 위에서 바라보기
     controls.setLookAt(
-      centerX + cameraDistance * 0.5,  // x
-      cameraDistance * 0.5,            // y (위에서)
-      centerZ + cameraDistance * 0.5,  // z
-      centerX,                         // target x
-      0,                               // target y
-      centerZ,                         // target z
-      true,                            // animate
+      centerX + cameraDistance * 0.5,
+      cameraDistance * 0.5,
+      centerZ + cameraDistance * 0.5,
+      centerX,
+      0,
+      centerZ,
+      true,
     );
   }, [gridSize, isInitialized]);
 
@@ -87,7 +89,7 @@ export default function Scene() {
     };
   }, []);
 
-  // WASD 기반 카메라 truck 이동 (매 프레임)
+  // WASD 기반 카메라 이동 (매 프레임)
   useFrame((_state, delta) => {
     const controls = controlsRef.current;
     if (!controls) return;
@@ -96,9 +98,6 @@ export default function Scene() {
     if (keys.size === 0) return;
 
     const speed = CAMERA_PAN_SPEED * delta;
-
-    // truck(x, y): 카메라 로컬 좌표계 기준 이동 (x=좌우, y=위아래)
-    // forward/backward는 forward() 메서드로 처리
     let truckX = 0;
     let forwardZ = 0;
 
@@ -107,13 +106,11 @@ export default function Scene() {
     if (keys.has('w')) forwardZ += speed;
     if (keys.has('s')) forwardZ -= speed;
 
-    if (truckX !== 0) {
-      controls.truck(truckX, 0, false);
-    }
-    if (forwardZ !== 0) {
-      controls.forward(forwardZ, false);
-    }
+    if (truckX !== 0) controls.truck(truckX, 0, false);
+    if (forwardZ !== 0) controls.forward(forwardZ, false);
   });
+
+  const rideEntries = Object.values(rides);
 
   return (
     <>
@@ -123,10 +120,20 @@ export default function Scene() {
         makeDefault
         minDistance={5}
         maxDistance={300}
-        maxPolarAngle={Math.PI / 2.1}
         dollySpeed={0.5}
       />
       <Terrain />
+
+      {/* 트랙 시스템 3D 렌더링 */}
+      {rideEntries.map((ride) => (
+        <group key={ride.id}>
+          <Station ride={ride} />
+          <TrackPath ride={ride} />
+        </group>
+      ))}
+
+      {/* 트랙 빌더 프리뷰 */}
+      {gameMode === 'track' && <TrackPreview />}
     </>
   );
 }

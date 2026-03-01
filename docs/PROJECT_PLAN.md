@@ -219,8 +219,8 @@ Phase 0 (리셋/스캐폴드)
 
 ### 미구현 태스크
 
-- [ ] 줌 레벨에 따른 카메라 각도 자동 조절 (줌 아웃 → 더 탑다운, 줌 인 → 더 수평)
-- [ ] 카메라 이동 범위 제한 (맵 밖으로 나가지 않도록)
+- [x] 줌 레벨에 따른 카메라 각도 자동 조절 (줌 아웃 → 더 탑다운, 줌 인 → 더 수평)
+- [x] 카메라 이동 범위 제한 (맵 밖으로 나가지 않도록)
 - [ ] `store/useCameraStore.ts` — 카메라 상태 (position, target, zoom, cameraMode)
 - [ ] `hooks/useKeyboard.ts` — 키보드 단축키 통합 시스템 (현재 WASD는 Scene.tsx에 내장)
 - [ ] 추후 놀이기구 모드 카메라: 'rideFollow', 'rideFirstPerson'
@@ -245,57 +245,95 @@ Phase 0 (리셋/스캐폴드)
 
 ### 4-1. 트랙 데이터 구조
 
-- [ ] `core/types/track.ts` — 트랙 세그먼트 타입 정의
-  - [ ] 세그먼트 속성: type, direction, heightDelta, bankAngle, specialType
-  - [ ] 세그먼트 타입 union: straight, left_gentle, left_sharp, right_gentle, right_sharp, slope_up, slope_down
-  - [ ] 특수 타입 union: normal, chain_lift, brake, booster
-- [ ] `core/constants/track.ts` — 트랙 상수
-  - [ ] `SEGMENT_LENGTH` — 트랙 한 땀의 기본 길이
-  - [ ] 각 세그먼트 타입별 방향 변화량
-  - [ ] 곡률별 회전 각도 프리셋
-- [ ] `core/systems/TrackSystem.ts` — 트랙 계산 로직
-  - [ ] `calculateNextPosition(currentPos, currentDir, segmentType)` → 다음 세그먼트 시작점
+- [x] `core/types/track.ts` — 트랙 세그먼트 타입 정의 (Node-Segment 그래프 모델)
+  - [x] 세그먼트 속성: type, specialType, startNodeId, endNodeId, length
+  - [x] 세그먼트 타입 union: straight, left_gentle, left_sharp, right_gentle, right_sharp, slope_up, slope_down
+  - [x] 특수 타입 union: normal, chain_lift, brake, booster
+  - [x] TrackNode, TrackSegment, Station, Ride, TrackBuilderMode, TrackPreviewData 타입
+- [x] `core/constants/track.ts` — 트랙 상수
+  - [x] `SEGMENT_LENGTH`, `SLOPE_HEIGHT_DELTA`, `DEFAULT_STATION_LENGTH`
+  - [x] `SNAP_RADIUS`, `COLLISION_MIN_DISTANCE`, `MAX_SEGMENTS_PER_RIDE`
+- [x] `core/systems/TrackSystem.ts` — 트랙 계산 로직
+  - [x] `directionToVector`, `normalizeDirection` — 방향 유틸
+  - [x] `calculateNextPosition(pos, dir, segmentType)` → 다음 위치/방향
+  - [x] `createStationNodes`, `createStationSegment` — 정거장 생성
+  - [x] `checkCollision(newPos, nodes, excludeIds, minDist)` → 충돌 감지
+  - [x] `checkSnapToStation` → 스냅 검사
   - [ ] `validateConnection(lastSegment, stationPosition)` → 자동완성 가능 여부
   - [ ] `generateCurvePoints(segments)` → Three.js 곡선을 위한 제어점 배열
   - [ ] `autoComplete(currentSegments, targetPosition)` → 자동완성 세그먼트 배열
-  - [ ] `checkCollision(segments, newSegment)` → 충돌 감지
 
 ### 4-2. 트랙 빌더 UI
 
-- [ ] `components/ui/RideBuilder/RideBuilderPanel.tsx` — 놀이기구 제작 패널
-  - [ ] 제작 시작: 정거장 위치 선택 → 빌더 모드 진입
-  - [ ] 세그먼트 타입 선택 버튼 (직진, 좌회전, 우회전, 오르막, 내리막)
-  - [ ] 특수 트랙 선택 (체인리프트, 브레이크, 부스터)
+- [x] `components/ui/RideBuilder/RideBuilderPanel.tsx` — 놀이기구 제작 패널
+  - [x] 제작 시작: 정거장 위치 선택 → 빌더 모드 진입
+  - [x] 세그먼트 타입 선택 버튼 (직진, 좌회전, 우회전, 오르막, 내리막)
+  - [x] 특수 트랙 선택 (체인리프트, 브레이크, 부스터)
   - [ ] 뱅크 각도 조절
-  - [ ] Undo (마지막 세그먼트 제거)
+  - [x] Undo (마지막 세그먼트 제거)
   - [ ] 자동완성 버튼 (조건 충족 시 활성화)
-  - [ ] 완료/취소 버튼
+  - [x] 완료/취소 버튼
 - [ ] `components/ui/RideBuilder/TrackSegmentPicker.tsx` — 세그먼트 종류 선택 UI
 
 ### 4-3. 트랙 3D 렌더링
 
-- [ ] `components/three/track/TrackPath.tsx` — 전체 트랙 경로 렌더링
-  - [ ] `CatmullRomCurve3` 또는 `TubeGeometry` 기반
-  - [ ] 세그먼트별 색상 구분 (특수 트랙은 다른 색)
-- [ ] `components/three/track/TrackSegment.tsx` — 개별 세그먼트 렌더링
-  - [ ] 트랙 메쉬 (두 줄의 레일 + 침목)
-  - [ ] 정상 상태 / 선택 상태 시각 구분
-- [ ] `components/three/track/TrackPreview.tsx` — 배치 전 프리뷰
-  - [ ] 반투명 표시
-  - [ ] 스냅 위치에 다음 세그먼트 프리뷰
-  - [ ] 배치 불가능한 경우 빨간색 표시
-- [ ] `components/three/track/TrackSupport.tsx` — 지지대 자동 생성
-  - [ ] 트랙과 지형 사이 높이 차이에 맞춰 높이 자동 계산
-  - [ ] InstancedMesh로 대량 렌더링 최적화
-- [ ] `components/three/ride/Station.tsx` — 정거장 렌더링
-  - [ ] 정거장 플랫폼 메쉬
+- [x] `components/three/track/TrackPath.tsx` — 전체 트랙 경로 렌더링
+  - [x] 세그먼트별 두 평행 레일 + 침목 (BoxGeometry 기반)
+  - [x] 세그먼트별 색상 구분 (normal=회색, chain_lift=주황, brake=빨강, booster=초록)
+- [x] 트랙 클릭 시 놀이기구 선택 + 금색 하이라이트 (TrackPath에 통합)
+- [x] `components/three/track/TrackPreview.tsx` — 배치 전 프리뷰
+  - [x] 반투명 표시 (초록=가능, 빨강=충돌)
+  - [x] 다음 세그먼트 위치 프리뷰 + 방향 화살표
+- [x] `components/three/ride/Station.tsx` — 정거장 렌더링
+  - [x] 정거장 플랫폼 메쉬 + 난간 + 레일
+  - [x] 클릭 시 놀이기구 선택, 선택 시 금색 하이라이트
   - [ ] 입구/출구 표시
 
-### 4-4. 트랙 + 지형 상호작용
+### 4-4. 트랙 선택 & 편집 관리
+
+- [x] 트랙/정거장 클릭 시 해당 놀이기구 선택 (금색 하이라이트)
+- [x] `RideInfoPanel.tsx` — 선택된 놀이기구 정보 패널 (이름 편집, 통계, 편집/삭제 버튼)
+- [x] 미완성 트랙 편집 모드 재진입 (`resumeBuilding`)
+- [x] 트랙 저장/불러오기 (RideData 확장, 맵 직렬화 연동)
+- [x] 크로스 라이드 충돌 검사 (세그먼트 추가 + 정거장 배치 시)
+- [x] 폐쇄 루프 스냅 (headNode가 station_start 근처 → 자동 연결)
+- [ ] **완성된 트랙도 편집 가능** — isComplete 상태에서도 편집 버튼 활성화, 마지막 세그먼트 제거 후 building 모드 재진입
+
+### 4-5. 트랙 + 지형 상호작용
 
 - [ ] 트랙 배치 시 지형 위 높이 참조
-- [ ] 트랙이 지형 아래로 뚫고 들어가는 경우 감지 (경고 또는 차단)
+- [x] 지형 투명도 — 트랙 관통 지점에서 정점 알파 감소 (onBeforeCompile 셰이더 주입)
+- [x] 지형 polygonOffset + 트랙 renderOrder로 깊이 충돌 방지
+- [ ] **카메라 X-Ray 모드** — 토글 버튼으로 지형 반투명화하여 내부 트랙 확인 가능 (빌더 모드에서는 자동 활성화, 완성 후에는 사용자 수동 토글)
+- [ ] **트랙 최소 권장 부피 (클리어런스)** — 차량 크기를 고려한 원통형 최소 공간 개념
+  - 트랙 중심으로부터 반경 R (예: 2.0m)의 클리어런스 영역
+  - 지형과의 관계: 클리어런스보다 깊이 관통 시 → 터널 모드 (지형 자동 뚫기)
+  - 클리어런스 미만으로 얕게 관통 시 → 배치 불가 (평탄화/높이 조절 유도)
+  - 트랙 간 교차: 클리어런스 × 2 이상 높이 차이 있어야 겹침 허용
 - [ ] 지지대 높이 = 트랙 높이 - 해당 위치 지형 높이
+
+### 4-6. 정거장 충돌 검사
+
+- [ ] **정거장 간 충돌 검사** — 신규 정거장 배치 시 기존 정거장 영역과 겹침 방지
+  - 정거장 영역 = 중심점 기준 방향 × 길이의 사각형 풋프린트
+  - 기존 모든 정거장 풋프린트와 OBB(Oriented Bounding Box) 또는 샘플 포인트 거리 검사
+  - 겹치면 빨간색 프리뷰 + 배치 불가
+
+### 4-7. 트랙 지지대 시스템
+
+- [ ] `components/three/track/TrackSupport.tsx` — 지지대 자동 생성
+  - [ ] 트랙과 지형 사이 높이 차이에 맞춰 높이 자동 계산
+  - [ ] 일정 간격(예: 4m)마다 수직 기둥 생성
+  - [ ] 기둥 높이 = 트랙 노드 Y - 해당 XZ 지점 지형 높이
+  - [ ] InstancedMesh로 대량 렌더링 최적화
+  - [ ] **트랙 교차 시 지지대 차단** — 아래쪽 트랙의 클리어런스 영역에서는 지지대 생성하지 않음 (뚫려 있는 모습)
+
+### 4-8. 곡선+경사 중첩 세그먼트 침목 각도 수정
+
+- [ ] **침목(tie) 방향 보정** — 곡선+경사가 결합된 세그먼트에서 침목이 레일에 수직이 되도록 수정
+  - 현재: 직선 forward 벡터만 사용 → 경사 있을 때 침목 각도 어긋남
+  - 수정: 곡선 포인트의 실제 3D 접선(tangent) 벡터를 사용하여 침목 orientation 계산
+  - up 벡터도 banking/slope에 따라 조정
 
 **생성 파일**:
 `src/core/types/track.ts` (보강), `src/core/constants/track.ts`, `src/core/systems/TrackSystem.ts`,
@@ -303,12 +341,16 @@ Phase 0 (리셋/스캐폴드)
 `src/components/three/track/TrackPath.tsx`, `src/components/three/track/TrackSegment.tsx`,
 `src/components/three/track/TrackPreview.tsx`, `src/components/three/track/TrackSupport.tsx`,
 `src/components/three/ride/Station.tsx`,
-`src/components/ui/RideBuilder/RideBuilderPanel.tsx`, `src/components/ui/RideBuilder/TrackSegmentPicker.tsx`,
+`src/components/ui/RideBuilder/RideBuilderPanel.tsx`, `src/components/ui/RideBuilder/RideInfoPanel.tsx`,
+`src/components/ui/RideBuilder/TrackSegmentPicker.tsx`,
 `src/hooks/useTrackBuilder.ts`
 
 **완료 기준**:
 - 정거장부터 시작하여 트랙을 한 땀씩 이어 붙여 하나의 폐쇄 트랙 완성 가능
+- 정거장 간 충돌 방지, 크로스 라이드 충돌 검사 작동
 - 3D로 트랙과 지지대가 올바르게 렌더링됨
+- 트랙 선택/정보 패널/편집 재진입/이름 변경 작동
+- 트랙 최소 클리어런스 개념 적용 (지형 터널, 트랙 교차)
 - 스냅, 충돌감지, 자동완성 작동
 - `npx tsc --noEmit` 통과
 
@@ -491,6 +533,8 @@ Phase 0 (리셋/스캐폴드)
 
 | 날짜 | 내용 |
 |------|------|
+| 2026-03-01 | Phase 4b: 트랙 선택/정보 패널/편집 재진입, 크로스 라이드 충돌, 폐쇄 루프 스냅, 지형 투명도, 카메라 고정 제거. 피드백 기반 4-5~4-8 계획 추가 |
+| 2026-03-01 | Phase 3 마무리 + Phase 4a: 카메라 줌-각도/경계 제한, 트랙 데이터 구조/정거장/직선·경사 세그먼트/3D 렌더링 |
 | 2026-03-01 | Phase 2 UX 개선: 드래그 방향 스컬프트, 도구 단순화(2개), WASD 카메라, 실시간 높이 힌트 |
 | 2026-03-01 | Phase 2: RCT 스타일 서브 셀렉션 (corner/full 모드) 추가 |
 | 2026-03-01 | Phase 2: 격자 셀 기반 편집 + CameraControls + 드래그 쓰로틀 + 맵 중앙 카메라 |

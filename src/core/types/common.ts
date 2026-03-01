@@ -53,11 +53,35 @@ export interface MapFile {
   rides: RideData[];
 }
 
-/** 놀이기구 데이터 (Phase 4+ 에서 확장) */
+/** 놀이기구 저장 데이터 — Ride의 직렬화 가능 서브셋 */
 export interface RideData {
   id: string;
-  type: string;
   name: string;
+  rideType: string;
+  station: {
+    position: { x: number; y: number; z: number };
+    direction: number;
+    length: number;
+  };
+  nodes: Record<string, {
+    id: string;
+    position: { x: number; y: number; z: number };
+    direction: number;
+    type: string;
+    nextSegmentId: string | null;
+    prevSegmentId: string | null;
+  }>;
+  segments: Record<string, {
+    id: string;
+    type: string;
+    specialType: string;
+    startNodeId: string;
+    endNodeId: string;
+    length: number;
+  }>;
+  headNodeId: string;
+  counters: { node: number; segment: number };
+  isComplete: boolean;
 }
 
 /** 게임 씬 */
