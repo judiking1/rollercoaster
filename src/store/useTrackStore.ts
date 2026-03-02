@@ -29,10 +29,19 @@ import {
   TRACK_CLEARANCE_RADIUS,
 } from '../core/constants/index.ts';
 
+/** 패널 위치 (화면 좌표) */
+interface PanelPosition {
+  x: number;
+  y: number;
+}
+
 interface TrackStoreState {
   rides: Record<string, Ride>;
   activeRideId: string | null;
+  /** 하이라이트된 라이드 (트랙 색상 강조) */
   selectedRideId: string | null;
+  /** 정보 패널이 열린 라이드별 화면 위치 */
+  openPanels: Record<string, PanelPosition>;
   builderMode: TrackBuilderMode;
   selectedSegmentType: SegmentType;
   selectedSpecialType: SpecialType;
@@ -50,6 +59,14 @@ interface TrackStoreActions {
   deleteRide: (rideId: string) => void;
   setActiveRide: (rideId: string | null) => void;
   setSelectedRide: (rideId: string | null) => void;
+  /** 패널 열기 (이미 열려있으면 무시) */
+  openPanel: (rideId: string) => void;
+  /** 패널 닫기 */
+  closePanel: (rideId: string) => void;
+  /** 모든 패널 닫기 */
+  closeAllPanels: () => void;
+  /** 패널 위치 업데이트 (드래그 후) */
+  setPanelPosition: (rideId: string, x: number, y: number) => void;
   renameRide: (rideId: string, name: string) => void;
   resumeBuilding: (rideId: string) => void;
   reopenRide: (rideId: string) => void;
@@ -69,6 +86,7 @@ const initialState: TrackStoreState = {
   rides: {},
   activeRideId: null,
   selectedRideId: null,
+  openPanels: {},
   builderMode: 'idle',
   selectedSegmentType: 'straight',
   selectedSpecialType: 'normal',
@@ -133,9 +151,13 @@ const useTrackStore = create<TrackStoreState & TrackStoreActions>()((set, get) =
   deleteRide: (rideId) => set((s) => {
     const newRides = { ...s.rides };
     delete newRides[rideId];
+    const newPanels = { ...s.openPanels };
+    delete newPanels[rideId];
     return {
       rides: newRides,
       activeRideId: s.activeRideId === rideId ? null : s.activeRideId,
+      selectedRideId: s.selectedRideId === rideId ? null : s.selectedRideId,
+      openPanels: newPanels,
       builderMode: s.activeRideId === rideId ? 'idle' : s.builderMode,
     };
   }),
@@ -143,6 +165,32 @@ const useTrackStore = create<TrackStoreState & TrackStoreActions>()((set, get) =
   setActiveRide: (rideId) => set({ activeRideId: rideId }),
 
   setSelectedRide: (rideId) => set({ selectedRideId: rideId }),
+
+  openPanel: (rideId) => set((s) => {
+    if (s.openPanels[rideId]) return s;
+    // 캐스케이드 배치: 기존 패널 수에 따라 위치 계산
+    const panelCount = Object.keys(s.openPanels).length;
+    const slot = panelCount % 5;
+    const x = 16 + slot * 30;
+    const y = 80 + slot * 40;
+    return { openPanels: { ...s.openPanels, [rideId]: { x, y } } };
+  }),
+
+  closePanel: (rideId) => set((s) => {
+    const newPanels = { ...s.openPanels };
+    delete newPanels[rideId];
+    return {
+      openPanels: newPanels,
+      selectedRideId: s.selectedRideId === rideId ? null : s.selectedRideId,
+    };
+  }),
+
+  closeAllPanels: () => set({ openPanels: {}, selectedRideId: null }),
+
+  setPanelPosition: (rideId, x, y) => set((s) => {
+    if (!s.openPanels[rideId]) return s;
+    return { openPanels: { ...s.openPanels, [rideId]: { x, y } } };
+  }),
 
   renameRide: (rideId, name) => set((s) => {
     const ride = s.rides[rideId];
@@ -156,9 +204,12 @@ const useTrackStore = create<TrackStoreState & TrackStoreActions>()((set, get) =
     const s = get();
     const ride = s.rides[rideId];
     if (!ride || ride.isComplete) return;
+    const newPanels = { ...s.openPanels };
+    delete newPanels[rideId];
     set({
       activeRideId: rideId,
       selectedRideId: null,
+      openPanels: newPanels,
       builderMode: 'building',
     });
   },
@@ -201,10 +252,13 @@ const useTrackStore = create<TrackStoreState & TrackStoreActions>()((set, get) =
       isComplete: false,
     };
 
+    const newPanels = { ...s.openPanels };
+    delete newPanels[rideId];
     set({
       rides: { ...s.rides, [rideId]: updatedRide },
       activeRideId: rideId,
       selectedRideId: null,
+      openPanels: newPanels,
       builderMode: 'building',
     });
   },

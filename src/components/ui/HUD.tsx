@@ -22,6 +22,7 @@ export default function HUD() {
 
   const { startBuilder, builderMode } = useTrackBuilder();
   const setSelectedRide = useTrackStore((s) => s.setSelectedRide);
+  const closeAllPanels = useTrackStore((s) => s.closeAllPanels);
 
   const [showSaveNotice, setShowSaveNotice] = useState(false);
 
@@ -38,14 +39,16 @@ export default function HUD() {
 
   const handleToggleTerrain = useCallback(() => {
     setSelectedRide(null);
+    closeAllPanels();
     setGameMode(gameMode === 'terrain' ? 'view' : 'terrain');
-  }, [gameMode, setGameMode, setSelectedRide]);
+  }, [gameMode, setGameMode, setSelectedRide, closeAllPanels]);
 
   const handleTrackBuilder = useCallback(() => {
     if (builderMode !== 'idle') return;
     setSelectedRide(null);
+    closeAllPanels();
     startBuilder();
-  }, [builderMode, startBuilder, setSelectedRide]);
+  }, [builderMode, startBuilder, setSelectedRide, closeAllPanels]);
 
   const mapName = currentMapData?.meta.name ?? '새 맵';
   const isTrackActive = gameMode === 'track';

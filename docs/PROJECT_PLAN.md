@@ -364,38 +364,38 @@ Phase 0 (리셋/스캐폴드)
 
 ### 5-1. 차량 경로 이동
 
-- [ ] `components/three/ride/Vehicle.tsx` — 차량 렌더링 + 경로 추적
-  - [ ] 트랙 세그먼트들로부터 `CatmullRomCurve3` 경로 생성
-  - [ ] `useFrame`에서 t 파라미터 증가 → `curve.getPointAt(t)`로 위치 업데이트
-  - [ ] 차량 방향(접선 벡터) 자동 정렬
+- [x] `components/three/ride/Vehicle.tsx` — 차량 렌더링 + 경로 추적
+  - [x] 트랙 세그먼트들로부터 `CatmullRomCurve3` 경로 생성
+  - [x] `useFrame`에서 t 파라미터 증가 → `curve.getPointAt(t)`로 위치 업데이트
+  - [x] 차량 방향(접선 벡터) 자동 정렬
   - [ ] 뱅크 각도에 따른 차량 기울기
-- [ ] 차량 모델: 기본 Box geometry (추후 GLTF 모델로 교체 가능)
+- [x] 차량 모델: 기본 Box geometry (추후 GLTF 모델로 교체 가능)
 
 ### 5-2. 물리 시뮬레이션
 
-- [ ] `core/systems/PhysicsSystem.ts` — 물리 계산 (순수 수학, rapier 미사용)
-  - [ ] 에너지 보존 기반 속도 계산: v = sqrt(2g * deltaH + v0²)
-  - [ ] 마찰 감속: v -= friction * dt
-  - [ ] 공기 저항: v -= airResist * v² * dt
-  - [ ] 체인리프트 구간: 일정 속도로 끌어올림
-  - [ ] 브레이크 구간: 목표 속도까지 감속
-  - [ ] 부스터 구간: 목표 속도까지 가속
-- [ ] `components/ui/RideBuilder/RideStatsDisplay.tsx` — 운행 통계 표시
-  - [ ] 실시간: 현재 속도
-  - [ ] 운행 완료 후: 최대 속력, 최대 높이, 최대 G-Force, 주행 시간, 트랙 길이
-- [ ] G-Force 계산
-  - [ ] 수직 G-Force: 곡선 반경과 속도 기반
-  - [ ] 횡방향 G-Force: 곡률과 속도 기반
+- [x] `core/systems/PhysicsSystem.ts` — 물리 계산 (순수 수학, rapier 미사용)
+  - [x] 에너지 보존 기반 속도 계산: v = sqrt(2g * deltaH + v0²)
+  - [x] 마찰 감속: v -= friction * dt
+  - [x] 공기 저항: v -= airResist * v² * dt
+  - [x] 체인리프트 구간: 일정 속도로 끌어올림
+  - [x] 브레이크 구간: 목표 속도까지 감속
+  - [x] 부스터 구간: 목표 속도까지 가속
+- [x] `components/ui/RideBuilder/RideStatsDisplay.tsx` — 운행 통계 표시
+  - [x] 실시간: 현재 속도, 높이, 수직/횡 G-Force
+  - [x] 운행 완료 후: 최대 속력, 최대 높이, 최대 G-Force, 주행 시간, 트랙 길이
+- [x] G-Force 계산
+  - [x] 수직 G-Force: 곡선 반경과 속도 기반
+  - [x] 횡방향 G-Force: 곡률과 속도 기반
 
 ### 5-3. 테스트 운행
 
-- [ ] `hooks/useRideTest.ts` — 테스트 운행 훅
-  - [ ] 운행 시작/중지/리셋
-  - [ ] 운행 완료 시 통계 계산 및 표시
-- [ ] 카메라 모드 전환
-  - [ ] 탑승자 시점 (1인칭): 차량 위치에 카메라 부착
-  - [ ] 추적 시점 (3인칭): 차량을 따라가는 카메라
-  - [ ] 자유 시점: 기존 카메라 유지하면서 차량 운행
+- [x] `hooks/useRideTest.ts` — 테스트 운행 훅
+  - [x] 운행 시작/중지/리셋
+  - [x] 운행 완료 시 통계 계산 및 표시
+- [x] 카메라 모드 전환
+  - [x] 탑승자 시점 (1인칭): 차량 위치에 카메라 부착
+  - [x] 추적 시점 (3인칭): 차량을 따라가는 카메라
+  - [x] 자유 시점: 기존 카메라 유지하면서 차량 운행
 
 **생성 파일**:
 `src/core/systems/PhysicsSystem.ts`, `src/core/constants/physics.ts`,

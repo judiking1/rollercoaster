@@ -3,15 +3,17 @@
  * CameraControls 기반: 모든 모드에서 우클릭=회전, 중클릭=팬, 휠=줌
  * terrain/track 모드에서는 좌클릭이 편집용이므로 카메라에서 비활성화
  * WASD 키보드로 카메라 이동 가능
+ * 테스트 운행 시 1인칭/3인칭 카메라 오버라이드 (포커스 라이드 추적)
  */
 
 import { useRef, useEffect } from 'react';
-import { useFrame } from '@react-three/fiber';
+import { useFrame, useThree } from '@react-three/fiber';
 import { CameraControls } from '@react-three/drei';
 import CameraControlsImpl from 'camera-controls';
 import Lighting from './Lighting.tsx';
 import Terrain from './terrain/Terrain.tsx';
 import Station from './ride/Station.tsx';
+import Vehicle from './ride/Vehicle.tsx';
 import TrackPath from './track/TrackPath.tsx';
 import TrackPreview from './track/TrackPreview.tsx';
 import TrackSupport from './track/TrackSupport.tsx';
@@ -19,7 +21,15 @@ import TrackTunnel from './track/TrackTunnel.tsx';
 import useGameStore from '../../store/useGameStore.ts';
 import useTerrainStore from '../../store/useTerrainStore.ts';
 import useTrackStore from '../../store/useTrackStore.ts';
-import { GRID_UNIT, CAMERA_PAN_SPEED } from '../../core/constants/index.ts';
+import useRideTestStore from '../../store/useRideTestStore.ts';
+import {
+  GRID_UNIT,
+  CAMERA_PAN_SPEED,
+  FIRST_PERSON_HEIGHT,
+  THIRD_PERSON_BEHIND,
+  THIRD_PERSON_ABOVE,
+} from '../../core/constants/index.ts';
+import { vehicleTransform } from './ride/vehicleRef.ts';
 
 export default function Scene() {
   const controlsRef = useRef<CameraControlsImpl>(null);
@@ -27,6 +37,9 @@ export default function Scene() {
   const gridSize = useTerrainStore((s) => s.gridSize);
   const isInitialized = useTerrainStore((s) => s.isInitialized);
   const rides = useTrackStore((s) => s.rides);
+  const focusedRideId = useRideTestStore((s) => s.focusedRideId);
+  const cameraMode = useRideTestStore((s) => s.cameraMode);
+  const { camera } = useThree();
 
   // WASD 키 상태 추적
   const keysPressed = useRef<Set<string>>(new Set());
@@ -46,6 +59,15 @@ export default function Scene() {
       controls.mouseButtons.middle = CameraControlsImpl.ACTION.TRUCK;
     }
   }, [gameMode]);
+
+  // 테스트 카메라 모드일 때 CameraControls 비활성화
+  useEffect(() => {
+    const controls = controlsRef.current;
+    if (!controls) return;
+
+    const isTestCamera = focusedRideId !== null && cameraMode !== 'free';
+    controls.enabled = !isTestCamera;
+  }, [focusedRideId, cameraMode]);
 
   // 맵 로드 시 카메라를 맵 중앙으로 이동
   useEffect(() => {
@@ -91,9 +113,45 @@ export default function Scene() {
     };
   }, []);
 
-  // WASD 기반 카메라 이동 (매 프레임)
+  // WASD 기반 카메라 이동 + 테스트 카메라 오버라이드
   useFrame((_state, delta) => {
     const controls = controlsRef.current;
+
+    // 포커스된 라이드 카메라 오버라이드
+    const store = useRideTestStore.getState();
+    const curFocused = store.focusedRideId;
+    const curCamMode = store.cameraMode;
+
+    if (curFocused && curCamMode !== 'free' && vehicleTransform.active) {
+      const vt = vehicleTransform;
+      const pos = vt.position;
+      const tangent = vt.tangent;
+
+      if (curCamMode === 'firstPerson') {
+        camera.position.set(pos.x, pos.y + FIRST_PERSON_HEIGHT, pos.z);
+        camera.lookAt(
+          pos.x + tangent.x * 10,
+          pos.y + FIRST_PERSON_HEIGHT + tangent.y * 10,
+          pos.z + tangent.z * 10,
+        );
+      } else if (curCamMode === 'thirdPerson') {
+        camera.position.set(
+          pos.x - tangent.x * THIRD_PERSON_BEHIND,
+          pos.y + THIRD_PERSON_ABOVE,
+          pos.z - tangent.z * THIRD_PERSON_BEHIND,
+        );
+        camera.lookAt(pos.x, pos.y + 1, pos.z);
+      }
+
+      return;
+    }
+
+    // vehicleTransform 비활성화 (테스트 없으면)
+    if (!curFocused) {
+      vehicleTransform.active = false;
+    }
+
+    // 일반 WASD 카메라 이동
     if (!controls) return;
 
     const keys = keysPressed.current;
@@ -133,6 +191,7 @@ export default function Scene() {
           <TrackPath ride={ride} />
           <TrackSupport ride={ride} />
           <TrackTunnel ride={ride} />
+          <Vehicle ride={ride} />
         </group>
       ))}
 

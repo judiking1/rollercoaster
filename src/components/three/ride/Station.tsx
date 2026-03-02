@@ -1,7 +1,7 @@
 /**
  * Station.tsx — 정거장 3D 렌더링
  * BoxGeometry 플랫폼, direction 기반 회전, 지형 높이 위 배치
- * 클릭 시 해당 놀이기구 선택
+ * 클릭 시 해당 놀이기구 패널 열기 + 하이라이트
  */
 
 import { useMemo, useCallback } from 'react';
@@ -21,6 +21,7 @@ export default function Station({ ride }: StationProps) {
   const selectedRideId = useTrackStore((s) => s.selectedRideId);
   const builderMode = useTrackStore((s) => s.builderMode);
   const setSelectedRide = useTrackStore((s) => s.setSelectedRide);
+  const openPanel = useTrackStore((s) => s.openPanel);
   const gameMode = useGameStore((s) => s.gameMode);
   const setGameMode = useGameStore((s) => s.setGameMode);
 
@@ -49,12 +50,13 @@ export default function Station({ ride }: StationProps) {
     // 빌더 모드에서는 선택 무시
     if (builderMode !== 'idle') return;
     e.stopPropagation();
-    // view 모드에서 클릭하면 선택
+    // view 모드에서 클릭하면 패널 열기 + 하이라이트
     if (gameMode !== 'terrain') {
-      setSelectedRide(isSelected ? null : ride.id);
+      setSelectedRide(ride.id);
+      openPanel(ride.id);
       if (gameMode !== 'view') setGameMode('view');
     }
-  }, [builderMode, gameMode, isSelected, ride.id, setSelectedRide, setGameMode]);
+  }, [builderMode, gameMode, ride.id, setSelectedRide, openPanel, setGameMode]);
 
   const platformColor = isSelected ? '#FFD700' : '#8B7355';
   const railingColor = isSelected ? '#DDAA00' : '#666666';

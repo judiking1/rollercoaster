@@ -10,10 +10,14 @@ import HUD from '../components/ui/HUD.tsx';
 import TerrainToolbar from '../components/ui/TerrainEditor/TerrainToolbar.tsx';
 import RideBuilderPanel from '../components/ui/RideBuilder/RideBuilderPanel.tsx';
 import RideInfoPanel from '../components/ui/RideBuilder/RideInfoPanel.tsx';
+import RideStatsDisplay from '../components/ui/RideBuilder/RideStatsDisplay.tsx';
 import useMapStore from '../store/useMapStore.ts';
 import useTerrainStore from '../store/useTerrainStore.ts';
 import useTrackStore from '../store/useTrackStore.ts';
 import useGameStore from '../store/useGameStore.ts';
+import useRideTestStore from '../store/useRideTestStore.ts';
+import useRideTest from '../hooks/useRideTest.ts';
+import type { RideStats } from '../core/types/ride.ts';
 
 export default function GameScene() {
   const currentMapData = useMapStore((s) => s.currentMapData);
@@ -23,6 +27,9 @@ export default function GameScene() {
   const loadRides = useTrackStore((s) => s.loadRides);
   const setGameMode = useGameStore((s) => s.setGameMode);
   const gameMode = useGameStore((s) => s.gameMode);
+
+  // 테스트 운행 키보드 단축키 활성화
+  useRideTest();
 
   // 맵 데이터로 지형 + 트랙 초기화
   useEffect(() => {
@@ -35,9 +42,20 @@ export default function GameScene() {
       if (currentMapData.rides.length > 0) {
         loadRides(currentMapData.rides);
       }
+      // 저장된 테스트 통계 복원
+      const statsMap: Record<string, RideStats> = {};
+      for (const rd of currentMapData.rides) {
+        if (rd.stats) {
+          statsMap[rd.id] = rd.stats;
+        }
+      }
+      if (Object.keys(statsMap).length > 0) {
+        useRideTestStore.getState().restoreStats(statsMap);
+      }
     }
 
     return () => {
+      useRideTestStore.getState().stopAllTests();
       resetTerrain();
       resetTrackStore();
       setGameMode('view');
@@ -56,6 +74,7 @@ export default function GameScene() {
       <TerrainToolbar />
       {gameMode === 'track' && <RideBuilderPanel />}
       <RideInfoPanel />
+      <RideStatsDisplay />
     </div>
   );
 }

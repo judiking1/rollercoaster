@@ -22,6 +22,7 @@ import {
 } from '../core/utils/storage.ts';
 import useTerrainStore from './useTerrainStore.ts';
 import useTrackStore from './useTrackStore.ts';
+import useRideTestStore from './useRideTestStore.ts';
 
 interface MapState {
   savedMaps: SavedMapEntry[];
@@ -102,9 +103,13 @@ const useMapStore = create<MapState & MapActions>()((set, get) => ({
       ? { heightMap: terrainState.heightMap }
       : currentMapData.terrain;
 
-    // 트랙 스토어에서 현재 놀이기구 데이터 가져오기
+    // 트랙 스토어에서 현재 놀이기구 데이터 가져오기 + 통계 병합
     const trackState = useTrackStore.getState();
-    const rides = Object.values(trackState.rides);
+    const statsMap = useRideTestStore.getState().completedStatsMap;
+    const rides = Object.values(trackState.rides).map((ride) => ({
+      ...ride,
+      stats: statsMap[ride.id] ?? undefined,
+    }));
 
     const jsonString = serializeMap({
       meta: currentMapData.meta,

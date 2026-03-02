@@ -82,6 +82,15 @@ export interface RideData {
   headNodeId: string;
   counters: { node: number; segment: number };
   isComplete: boolean;
+  /** 테스트 운행 완주 통계 (옵셔널 — 기존 맵 호환) */
+  stats?: {
+    maxSpeed: number;
+    maxHeight: number;
+    maxGForce: number;
+    maxLateralG: number;
+    trackLength: number;
+    rideTime: number;
+  };
 }
 
 /** 게임 씬 */

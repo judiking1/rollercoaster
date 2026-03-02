@@ -96,6 +96,10 @@ export default function Terrain() {
 
   const setSelectedRide = useTrackStore((s) => s.setSelectedRide);
 
+  // 드래그 감지: pointerDown 위치를 기억하여 클릭인지 드래그인지 판별
+  const pointerDownPos = useRef<{ x: number; y: number } | null>(null);
+  const CLICK_THRESHOLD = 5; // px 이내면 클릭으로 판정
+
   const handlePointerDown = useCallback((e: ThreeEvent<PointerEvent>) => {
     if (gameMode === 'terrain') {
       terrainPointerDown(e);
@@ -103,16 +107,24 @@ export default function Terrain() {
       e.stopPropagation();
       handleTerrainClick(e.point.x, e.point.z);
     } else if (gameMode === 'view' && e.button === 0) {
-      // view 모드에서 지형 클릭 시 선택 해제
-      setSelectedRide(null);
+      // 클릭 시작 위치 기록 (드래그 판별용)
+      pointerDownPos.current = { x: e.nativeEvent.clientX, y: e.nativeEvent.clientY };
     }
-  }, [gameMode, terrainPointerDown, handleTerrainClick, setSelectedRide]);
+  }, [gameMode, terrainPointerDown, handleTerrainClick]);
 
-  const handlePointerUp = useCallback(() => {
+  const handlePointerUp = useCallback((e: ThreeEvent<PointerEvent>) => {
     if (gameMode === 'terrain') {
       terrainPointerUp();
+    } else if (gameMode === 'view' && e.button === 0 && pointerDownPos.current) {
+      // 드래그가 아닌 진짜 클릭일 때만 하이라이트 해제
+      const dx = e.nativeEvent.clientX - pointerDownPos.current.x;
+      const dy = e.nativeEvent.clientY - pointerDownPos.current.y;
+      if (dx * dx + dy * dy < CLICK_THRESHOLD * CLICK_THRESHOLD) {
+        setSelectedRide(null);
+      }
+      pointerDownPos.current = null;
     }
-  }, [gameMode, terrainPointerUp]);
+  }, [gameMode, terrainPointerUp, setSelectedRide]);
 
   const handlePointerLeave = useCallback(() => {
     if (gameMode === 'terrain') {
