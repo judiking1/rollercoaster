@@ -15,9 +15,10 @@ Phase 0 (리셋/스캐폴드)
             └→ Phase 3 (카메라 시스템)
                  └→ Phase 4 (트랙 시스템)
                       └→ Phase 5 (차량/물리)
-                           └→ Phase 6 (놀이기구 관리)
-                                └→ Phase 7 (프리셋 배치)
-                                     └→ Phase 8+ (시뮬레이션, 재정, NPC 등)
+                           └→ Phase 5.5 (UI/UX 시스템 재설계)
+                                └→ Phase 6 (놀이기구 관리)
+                                     └→ Phase 7 (프리셋 배치)
+                                          └→ Phase 8+ (시뮬레이션, 재정, NPC 등)
 ```
 
 ---
@@ -413,6 +414,47 @@ Phase 0 (리셋/스캐폴드)
 
 ---
 
+## Phase 5.5: UI/UX 시스템 재설계 (L)
+
+**목표**: 프로토타입 수준 HUD를 실제 게임 품질의 UI 시스템으로 전면 교체
+
+**선행 조건**: Phase 5 완료
+
+### 태스크
+
+- [x] 공통 UI 컴포넌트: IconButton, ToolDivider, SVG 아이콘 세트
+- [x] TopBar: 전체 너비 상단 툴바 (아이콘 + 모드 하이라이트)
+- [x] BottomBar: 모드별 컨텍스트 도구 바 (지형/트랙/테스트)
+- [x] HUD 리팩토링: TopBar + BottomBar 통합
+- [x] TerrainToolbar → BottomBar 내부 컴포넌트로 리팩토링
+- [x] RideBuilderPanel → BottomBar 내부 컴포넌트로 리팩토링
+- [x] RideStatsDisplay → BottomBar 내부 통합
+- [x] 트랙 클릭 시 라이드 선택 + 패널 열기 + 미완성 자동 빌더
+- [x] 빌더 진입 시 정보 패널 유지
+- [x] GameScene 오버레이 구조 정리
+- [x] BottomBar 컨텍스트 저장 버튼 (지형/트랙 편집 중 하단 저장)
+- [x] 메뉴 버튼 → 드롭다운 패널 (불러오기/나가기, 자동저장)
+- [x] 맵 이름 클릭 → 저장 맵 리스트 드롭다운 (맵 전환)
+- [x] 현재 시간 HH:MM 표시 (TopBar 우측)
+- [x] 새 아이콘: IconLoad, IconExit, IconChevronDown
+
+**생성 파일**:
+`src/components/ui/icons/index.tsx`, `src/components/ui/common/IconButton.tsx`,
+`src/components/ui/common/ToolDivider.tsx`,
+`src/components/ui/layout/TopBar.tsx`, `src/components/ui/layout/BottomBar.tsx`
+
+**수정 파일**:
+`src/components/ui/HUD.tsx`, `src/scenes/GameScene.tsx`,
+`src/components/three/track/TrackPath.tsx`, `src/store/useTrackStore.ts`
+
+**완료 기준**:
+- 상단 아이콘 기반 툴바로 모드 전환 가능
+- 하단 컨텍스트 바에 모드별 도구 표시
+- 트랙 클릭 시 패널 열기 + 미완성 자동 빌더
+- `npx tsc --noEmit` 통과
+
+---
+
 ## Phase 6: 놀이기구 완성 & 관리 (L)
 
 **목표**: 놀이기구를 하나의 완성된 단위로 저장/관리
@@ -535,6 +577,8 @@ Phase 0 (리셋/스캐폴드)
 
 | 날짜 | 내용 |
 |------|------|
+| 2026-03-02 | Phase 5.5 추가: BottomBar 컨텍스트 저장, 메뉴 드롭다운, 맵 리스트 드롭다운, 시계 표시 |
+| 2026-03-02 | Phase 5.5: UI/UX 시스템 재설계 — 아이콘 기반 TopBar/BottomBar, 트랙 클릭 선택 개선, HUD/GameScene 리팩토링 |
 | 2026-03-02 | Phase 4c: 피드백 7항목 구현 — 침목 각도 수정, 완성 라이드 편집(reopenRide), 정거장 OBB 충돌, X-Ray 모드, 트랙 지지대, 클리어런스 검사, 지지대 간섭 방지 |
 | 2026-03-01 | Phase 4b: 트랙 선택/정보 패널/편집 재진입, 크로스 라이드 충돌, 폐쇄 루프 스냅, 지형 투명도, 카메라 고정 제거. 피드백 기반 4-5~4-8 계획 추가 |
 | 2026-03-01 | Phase 3 마무리 + Phase 4a: 카메라 줌-각도/경계 제한, 트랙 데이터 구조/정거장/직선·경사 세그먼트/3D 렌더링 |

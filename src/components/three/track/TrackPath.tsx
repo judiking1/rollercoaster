@@ -170,6 +170,8 @@ export default function TrackPath({ ride }: TrackPathProps) {
   const selectedRideId = useTrackStore((s) => s.selectedRideId);
   const builderMode = useTrackStore((s) => s.builderMode);
   const setSelectedRide = useTrackStore((s) => s.setSelectedRide);
+  const openPanel = useTrackStore((s) => s.openPanel);
+  const resumeBuilding = useTrackStore((s) => s.resumeBuilding);
   const gameMode = useGameStore((s) => s.gameMode);
   const setGameMode = useGameStore((s) => s.setGameMode);
 
@@ -205,11 +207,25 @@ export default function TrackPath({ ride }: TrackPathProps) {
   const handleClick = useCallback((e: ThreeEvent<MouseEvent>) => {
     if (builderMode !== 'idle') return;
     e.stopPropagation();
-    if (gameMode !== 'terrain') {
-      setSelectedRide(isSelected ? null : ride.id);
+    if (gameMode === 'terrain') return;
+
+    // 미완성 라이드 클릭 → 자동 빌더 진입
+    if (!ride.isComplete) {
+      setGameMode('track');
+      resumeBuilding(ride.id);
+      openPanel(ride.id);
+      return;
+    }
+
+    // 완성 라이드: 정거장 클릭과 동일하게 패널 열기
+    if (isSelected) {
+      setSelectedRide(null);
+    } else {
+      setSelectedRide(ride.id);
+      openPanel(ride.id);
       if (gameMode !== 'view') setGameMode('view');
     }
-  }, [builderMode, gameMode, isSelected, ride.id, setSelectedRide, setGameMode]);
+  }, [builderMode, gameMode, isSelected, ride.id, ride.isComplete, setSelectedRide, setGameMode, openPanel, resumeBuilding]);
 
   // 선택 시 레일 색상 오버라이드
   const colorOverride = isSelected ? '#FFD700' : undefined;

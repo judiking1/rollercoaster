@@ -204,12 +204,9 @@ const useTrackStore = create<TrackStoreState & TrackStoreActions>()((set, get) =
     const s = get();
     const ride = s.rides[rideId];
     if (!ride || ride.isComplete) return;
-    const newPanels = { ...s.openPanels };
-    delete newPanels[rideId];
     set({
       activeRideId: rideId,
-      selectedRideId: null,
-      openPanels: newPanels,
+      selectedRideId: rideId,
       builderMode: 'building',
     });
   },
@@ -252,13 +249,10 @@ const useTrackStore = create<TrackStoreState & TrackStoreActions>()((set, get) =
       isComplete: false,
     };
 
-    const newPanels = { ...s.openPanels };
-    delete newPanels[rideId];
     set({
       rides: { ...s.rides, [rideId]: updatedRide },
       activeRideId: rideId,
-      selectedRideId: null,
-      openPanels: newPanels,
+      selectedRideId: rideId,
       builderMode: 'building',
     });
   },
