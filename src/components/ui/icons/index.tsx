@@ -203,6 +203,19 @@ export function IconExit({ className }: IconProps) {
   );
 }
 
+/** 놀이기구 목록 — 롤러코스터 리스트 */
+export function IconRideList({ className }: IconProps) {
+  return (
+    <svg className={className} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M2 5h4M2 10h4M2 15h4" />
+      <path d="M8 5h10M8 10h10M8 15h10" />
+      <circle cx="10" cy="5" r="0.5" fill="currentColor" />
+      <circle cx="10" cy="10" r="0.5" fill="currentColor" />
+      <circle cx="10" cy="15" r="0.5" fill="currentColor" />
+    </svg>
+  );
+}
+
 /** 아래 화살표 — 드롭다운 힌트 */
 export function IconChevronDown({ className }: IconProps) {
   return (

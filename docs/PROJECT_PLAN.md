@@ -412,7 +412,7 @@ Phase 0 (리셋/스캐폴드)
 
 **테스트 체크포인트**: `PhysicsSystem.ts`의 속도 계산, G-Force 계산 단위 테스트
 
----
+---ㅋ
 
 ## Phase 5.5: UI/UX 시스템 재설계 (L)
 
@@ -461,36 +461,56 @@ Phase 0 (리셋/스캐폴드)
 
 **선행 조건**: Phase 5 완료 (차량 + 물리 시뮬레이션)
 
-### 6-1. 놀이기구 통합
+### 6-1. 놀이기구 CRUD (이전 Phase에서 구현 완료)
 
-- [ ] `store/useRideStore.ts` — 놀이기구 CRUD
-  - [ ] `rides: Record<string, RideData>`
-  - [ ] `addRide`, `updateRide`, `deleteRide`
-  - [ ] 각 놀이기구: 정거장 + 트랙 + 차량 설정 + 통계
-- [ ] 차량 타입 선택 UI
-  - [ ] 놀이기구 종류별 사용 가능한 차량 목록
-  - [ ] 열차 수, 차량 수 설정
-- [ ] 놀이기구 이름 설정
-- [ ] 놀이기구 목록 패널 (전체 놀이기구 관리)
+> useTrackStore에 Ride CRUD가 통합 구현되어 별도 useRideStore 불필요
 
-### 6-2. 놀이기구 편집
+- [x] Ride CRUD — createRide, deleteRide, renameRide (useTrackStore)
+- [x] 놀이기구 이름 설정 (RideInfoPanel 클릭 → 인라인 편집)
+- [x] 기존 놀이기구 선택 → 트랙 편집 모드 재진입 (resumeBuilding, reopenRide)
+- [x] 놀이기구 전체 삭제 (deleteRide)
+- [x] 직렬화: 모든 놀이기구 데이터 JSON 포함 (RideData + loadRides)
+- [x] 역직렬화: 놀이기구 복원 및 3D 렌더링
 
-- [ ] 기존 놀이기구 선택 → 트랙 편집 모드 재진입
-- [ ] 개별 세그먼트 수정/삭제
-- [ ] 놀이기구 전체 삭제
+### 6-2. vehicleConfig 데이터 모델
 
-### 6-3. 맵 저장에 놀이기구 포함
+- [x] Ride 인터페이스에 `vehicleConfig: VehicleConfig` 필드 추가
+- [x] RideData에 `vehicleConfig?` 옵셔널 필드 추가 (기존 맵 호환)
+- [x] `getDefaultVehicleConfig(rideType)` 헬퍼 함수 추가
+- [x] createRide에서 vehicleConfig 초기화
+- [x] loadRides에서 vehicleConfig 없는 기존 데이터에 기본값 적용
+- [x] `updateVehicleConfig(rideId, partial)` 액션 추가
 
-- [ ] 직렬화: 모든 놀이기구 데이터 JSON 포함
-- [ ] 역직렬화: 놀이기구 복원 및 3D 렌더링
+### 6-3. 차량 설정 UI
 
-**생성 파일**:
-`src/store/useRideStore.ts`, `src/core/systems/RideSystem.ts`,
-`src/components/three/ride/RideGroup.tsx`
+- [x] RideInfoPanel 내 접이식 "차량 설정" 섹션
+  - [x] 차량 타입 드롭다운 (RIDE_DEFINITIONS 기반)
+  - [x] 열차 수 (1~4) 숫자 입력
+  - [x] 칸 수 (1~12) 숫자 입력
+
+### 6-4. 놀이기구 목록 드롭다운
+
+- [x] TopBar에 놀이기구 목록 아이콘 버튼 + 배지(놀이기구 수)
+- [x] 클릭 시 드롭다운: 놀이기구 이름, 완성 상태(초록/노란 dot), 세그먼트 수
+- [x] 항목 클릭 → 선택 + 정보 패널 열기
+
+### 6-5. 차량 설정 실반영 (미구현)
+
+- [ ] vehicleConfig 변경 시 실제 차량 외형에 반영 (차량 모델 교체)
+- [ ] 열차 수 설정 → 동시 운행 열차 수 반영 (멀티 트레인)
+- [ ] 칸 수 설정 → 열차 길이 반영 (연결된 차량 렌더링)
+
+### 6-6. 테스트 운행 중지 시 초기 상태 복원
+
+- [ ] 테스트 운행 중지 시 차량/카메라를 초기 놀이기구 상태로 복원
+  - 차량 위치를 정거장으로 리셋
+  - 카메라를 운행 시작 전 위치/타겟으로 복원
+  - 운행 중 변경된 상태 정리 (실시간 통계 등)
 
 **완료 기준**:
 - 하나의 맵에 여러 놀이기구를 만들고, 각각 테스트 운행 가능
-- 저장/불러오기 시 모든 놀이기구 보존
+- 저장/불러오기 시 모든 놀이기구 보존 (vehicleConfig 포함)
+- 테스트 운행 중지 시 깔끔하게 초기 상태 복원
 - `npx tsc --noEmit` 통과
 
 **테스트 체크포인트**: 놀이기구 포함 맵 직렬화/역직렬화 왕복 테스트
@@ -577,6 +597,7 @@ Phase 0 (리셋/스캐폴드)
 
 | 날짜 | 내용 |
 |------|------|
+| 2026-03-05 | Phase 6: vehicleConfig 데이터 모델/UI, 놀이기구 목록 드롭다운 구현. 미구현 항목(차량 실반영, 운행 중지 복원) 계획 추가 |
 | 2026-03-02 | Phase 5.5 추가: BottomBar 컨텍스트 저장, 메뉴 드롭다운, 맵 리스트 드롭다운, 시계 표시 |
 | 2026-03-02 | Phase 5.5: UI/UX 시스템 재설계 — 아이콘 기반 TopBar/BottomBar, 트랙 클릭 선택 개선, HUD/GameScene 리팩토링 |
 | 2026-03-02 | Phase 4c: 피드백 7항목 구현 — 침목 각도 수정, 완성 라이드 편집(reopenRide), 정거장 OBB 충돌, X-Ray 모드, 트랙 지지대, 클리어런스 검사, 지지대 간섭 방지 |

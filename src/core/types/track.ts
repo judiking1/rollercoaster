@@ -89,6 +89,8 @@ export interface Ride {
   counters: RideCounters;
   /** 트랙이 폐쇄되었는지 여부 */
   isComplete: boolean;
+  /** 차량 설정 */
+  vehicleConfig: import('./ride.ts').VehicleConfig;
 }
 
 // ─── 빌더 모드 ──────────────────────────────────────────

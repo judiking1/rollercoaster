@@ -14,6 +14,7 @@ import type {
   SpecialType,
   TrackBuilderMode,
 } from '../core/types/index.ts';
+import type { VehicleConfig } from '../core/types/index.ts';
 import {
   calculateNextPosition,
   createStationNodes,
@@ -22,6 +23,7 @@ import {
   checkClearanceViolation,
   distance3D,
 } from '../core/systems/TrackSystem.ts';
+import { getDefaultVehicleConfig } from '../core/types/index.ts';
 import {
   COLLISION_MIN_DISTANCE,
   MAX_SEGMENTS_PER_RIDE,
@@ -68,6 +70,7 @@ interface TrackStoreActions {
   /** 패널 위치 업데이트 (드래그 후) */
   setPanelPosition: (rideId: string, x: number, y: number) => void;
   renameRide: (rideId: string, name: string) => void;
+  updateVehicleConfig: (rideId: string, partial: Partial<VehicleConfig>) => void;
   resumeBuilding: (rideId: string) => void;
   reopenRide: (rideId: string) => void;
 
@@ -121,10 +124,11 @@ const useTrackStore = create<TrackStoreState & TrackStoreActions>()((set, get) =
     startNode.nextSegmentId = stationSeg.id;
     endNode.prevSegmentId = stationSeg.id;
 
+    const rideType = 'steel_coaster';
     const ride: Ride = {
       id: rideId,
       name: `코스터 ${rideNum}`,
-      rideType: 'steel_coaster',
+      rideType,
       station,
       nodes: {
         [startNode.id]: startNode,
@@ -136,6 +140,7 @@ const useTrackStore = create<TrackStoreState & TrackStoreActions>()((set, get) =
       headNodeId: endNode.id,
       counters: { node: nextCounter, segment: 1 },
       isComplete: false,
+      vehicleConfig: getDefaultVehicleConfig(rideType),
     };
 
     set({
@@ -197,6 +202,20 @@ const useTrackStore = create<TrackStoreState & TrackStoreActions>()((set, get) =
     if (!ride) return s;
     return {
       rides: { ...s.rides, [rideId]: { ...ride, name } },
+    };
+  }),
+
+  updateVehicleConfig: (rideId, partial) => set((s) => {
+    const ride = s.rides[rideId];
+    if (!ride) return s;
+    return {
+      rides: {
+        ...s.rides,
+        [rideId]: {
+          ...ride,
+          vehicleConfig: { ...ride.vehicleConfig, ...partial },
+        },
+      },
     };
   }),
 
@@ -475,6 +494,7 @@ const useTrackStore = create<TrackStoreState & TrackStoreActions>()((set, get) =
         headNodeId: rd.headNodeId,
         counters: rd.counters,
         isComplete: rd.isComplete,
+        vehicleConfig: rd.vehicleConfig ?? getDefaultVehicleConfig(rd.rideType),
       };
       rides[rd.id] = ride;
 

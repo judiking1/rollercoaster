@@ -88,3 +88,13 @@ export const RIDE_DEFINITIONS = {
 
 /** 놀이기구 타입 키 */
 export type RideTypeKey = keyof typeof RIDE_DEFINITIONS;
+
+/** 주어진 rideType에 대한 기본 VehicleConfig 반환 */
+export function getDefaultVehicleConfig(rideType: string): VehicleConfig {
+  const def = RIDE_DEFINITIONS[rideType as RideTypeKey];
+  return {
+    type: def?.vehicleOptions[0] ?? 'standard_car',
+    trainCount: 1,
+    carsPerTrain: 4,
+  };
+}

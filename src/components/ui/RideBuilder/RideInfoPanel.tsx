@@ -9,6 +9,8 @@ import useGameStore from '../../../store/useGameStore.ts';
 import useRideTestStore from '../../../store/useRideTestStore.ts';
 import type { Ride } from '../../../core/types/index.ts';
 import type { RideStats } from '../../../core/types/ride.ts';
+import { RIDE_DEFINITIONS } from '../../../core/types/index.ts';
+import type { RideTypeKey } from '../../../core/types/index.ts';
 
 /** m/s → km/h 변환 */
 function msToKmh(ms: number): number {
@@ -45,6 +47,78 @@ export default function RideInfoPanel() {
         );
       })}
     </>
+  );
+}
+
+/* ───────────── 차량 설정 접이식 섹션 ───────────── */
+
+interface VehicleConfigSectionProps {
+  ride: Ride;
+}
+
+function VehicleConfigSection({ ride }: VehicleConfigSectionProps) {
+  const [isOpen, setIsOpen] = useState(false);
+  const updateVehicleConfig = useTrackStore((s) => s.updateVehicleConfig);
+
+  const def = RIDE_DEFINITIONS[ride.rideType as RideTypeKey];
+  const vehicleOptions = def?.vehicleOptions ?? ['standard_car'];
+  const config = ride.vehicleConfig;
+
+  return (
+    <div className="mb-3">
+      <button
+        onClick={() => setIsOpen((p) => !p)}
+        className="flex w-full items-center justify-between text-xs font-semibold text-slate-300 hover:text-white"
+      >
+        <span>차량 설정</span>
+        <span className="text-[10px] text-slate-500">{isOpen ? '▲' : '▼'}</span>
+      </button>
+      {isOpen && (
+        <div className="mt-2 space-y-2 rounded bg-slate-800/60 p-2 text-xs text-gray-300">
+          {/* 차량 타입 */}
+          <div className="flex items-center justify-between">
+            <span>차량 타입</span>
+            <select
+              value={config.type}
+              onChange={(e) => updateVehicleConfig(ride.id, { type: e.target.value })}
+              className="rounded bg-slate-700 px-2 py-0.5 text-xs text-white outline-none"
+            >
+              {vehicleOptions.map((opt) => (
+                <option key={opt} value={opt}>{opt}</option>
+              ))}
+            </select>
+          </div>
+          {/* 열차 수 */}
+          <div className="flex items-center justify-between">
+            <span>열차 수</span>
+            <input
+              type="number"
+              min={1}
+              max={4}
+              value={config.trainCount}
+              onChange={(e) => updateVehicleConfig(ride.id, {
+                trainCount: Math.max(1, Math.min(4, parseInt(e.target.value, 10) || 1)),
+              })}
+              className="w-14 rounded bg-slate-700 px-2 py-0.5 text-center text-xs text-white outline-none"
+            />
+          </div>
+          {/* 칸 수 */}
+          <div className="flex items-center justify-between">
+            <span>칸 수</span>
+            <input
+              type="number"
+              min={1}
+              max={12}
+              value={config.carsPerTrain}
+              onChange={(e) => updateVehicleConfig(ride.id, {
+                carsPerTrain: Math.max(1, Math.min(12, parseInt(e.target.value, 10) || 1)),
+              })}
+              className="w-14 rounded bg-slate-700 px-2 py-0.5 text-center text-xs text-white outline-none"
+            />
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -246,6 +320,9 @@ function SingleRidePanel({ ride, posX, posY, zIndex }: SingleRidePanelProps) {
             <span>{ride.station.position.y.toFixed(1)}m</span>
           </div>
         </div>
+
+        {/* 차량 설정 */}
+        <VehicleConfigSection ride={ride} />
 
         {/* 테스트 결과 (완주 이력이 있을 때) */}
         {savedStats && (

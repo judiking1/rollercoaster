@@ -47,7 +47,7 @@ export type {
   VehicleFrameState,
   RideTypeKey,
 } from './ride.ts';
-export { RIDE_DEFINITIONS } from './ride.ts';
+export { RIDE_DEFINITIONS, getDefaultVehicleConfig } from './ride.ts';
 
 export type {
   SimulationSpeed,

@@ -22,6 +22,7 @@ import {
   IconLoad,
   IconExit,
   IconChevronDown,
+  IconRideList,
 } from '../icons/index.tsx';
 
 /* ───────────── 시계 표시 ───────────── */
@@ -181,6 +182,75 @@ function MapListDropdown({ onClose }: MapListDropdownProps) {
   );
 }
 
+/* ───────────── 놀이기구 목록 드롭다운 ───────────── */
+
+interface RideListDropdownProps {
+  onClose: () => void;
+}
+
+function RideListDropdown({ onClose }: RideListDropdownProps) {
+  const rides = useTrackStore((s) => s.rides);
+  const setSelectedRide = useTrackStore((s) => s.setSelectedRide);
+  const openPanel = useTrackStore((s) => s.openPanel);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handlePointerDown(e: PointerEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        onClose();
+      }
+    }
+    document.addEventListener('pointerdown', handlePointerDown);
+    return () => document.removeEventListener('pointerdown', handlePointerDown);
+  }, [onClose]);
+
+  const rideList = Object.values(rides);
+
+  const handleSelectRide = useCallback((rideId: string) => {
+    setSelectedRide(rideId);
+    openPanel(rideId);
+    onClose();
+  }, [setSelectedRide, openPanel, onClose]);
+
+  return (
+    <div
+      ref={ref}
+      className="absolute left-0 top-full z-30 mt-1 w-56 overflow-hidden rounded-lg border border-slate-700/50 bg-slate-900/95 shadow-xl backdrop-blur-md"
+    >
+      <div className="max-h-80 overflow-y-auto">
+        {rideList.length === 0 ? (
+          <div className="px-3 py-4 text-center text-xs text-slate-500">
+            놀이기구가 없습니다
+          </div>
+        ) : (
+          rideList.map((ride) => {
+            const segCount = Object.keys(ride.segments).length - 1;
+            return (
+              <button
+                key={ride.id}
+                onClick={() => handleSelectRide(ride.id)}
+                className="flex w-full items-center justify-between px-3 py-2 text-left text-sm text-slate-200 transition-colors hover:bg-slate-700/60"
+              >
+                <div className="flex items-center gap-2 overflow-hidden">
+                  <span
+                    className={`inline-block h-2 w-2 shrink-0 rounded-full ${
+                      ride.isComplete ? 'bg-emerald-400' : 'bg-amber-400'
+                    }`}
+                  />
+                  <span className="truncate">{ride.name}</span>
+                </div>
+                <span className="ml-2 shrink-0 text-[10px] text-slate-500">
+                  {segCount}seg
+                </span>
+              </button>
+            );
+          })
+        )}
+      </div>
+    </div>
+  );
+}
+
 /* ───────────── TopBar 본체 ───────────── */
 
 export default function TopBar() {
@@ -194,9 +264,13 @@ export default function TopBar() {
   const closeAllPanels = useTrackStore((s) => s.closeAllPanels);
   const { startBuilder, builderMode } = useTrackBuilder();
 
+  const rides = useTrackStore((s) => s.rides);
+  const rideCount = Object.keys(rides).length;
+
   const [showSaveNotice, setShowSaveNotice] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isMapListOpen, setIsMapListOpen] = useState(false);
+  const [isRideListOpen, setIsRideListOpen] = useState(false);
 
   const isTrackActive = gameMode === 'track';
   const mapName = currentMapData?.meta.name ?? '새 맵';
@@ -236,20 +310,28 @@ export default function TopBar() {
 
   const handleMenuToggle = useCallback(() => {
     setIsMenuOpen((prev) => {
-      if (!prev) setIsMapListOpen(false);
+      if (!prev) { setIsMapListOpen(false); setIsRideListOpen(false); }
       return !prev;
     });
   }, []);
 
   const handleMapListToggle = useCallback(() => {
     setIsMapListOpen((prev) => {
-      if (!prev) setIsMenuOpen(false);
+      if (!prev) { setIsMenuOpen(false); setIsRideListOpen(false); }
+      return !prev;
+    });
+  }, []);
+
+  const handleRideListToggle = useCallback(() => {
+    setIsRideListOpen((prev) => {
+      if (!prev) { setIsMenuOpen(false); setIsMapListOpen(false); }
       return !prev;
     });
   }, []);
 
   const closeMenu = useCallback(() => setIsMenuOpen(false), []);
   const closeMapList = useCallback(() => setIsMapListOpen(false), []);
+  const closeRideList = useCallback(() => setIsRideListOpen(false), []);
 
   return (
     <>
@@ -303,6 +385,26 @@ export default function TopBar() {
             disabled={isTrackActive || gameMode === 'terrain'}
             onClick={handleXRay}
           />
+
+          {/* 놀이기구 목록 */}
+          <div className="relative">
+            <IconButton
+              icon={
+                <span className="relative">
+                  <IconRideList />
+                  {rideCount > 0 && (
+                    <span className="absolute -right-1.5 -top-1.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-blue-500 text-[8px] font-bold leading-none text-white">
+                      {rideCount}
+                    </span>
+                  )}
+                </span>
+              }
+              label="목록"
+              tooltip="놀이기구 목록"
+              onClick={handleRideListToggle}
+            />
+            {isRideListOpen && <RideListDropdown onClose={closeRideList} />}
+          </div>
 
           <ToolDivider />
 

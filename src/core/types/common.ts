@@ -82,6 +82,12 @@ export interface RideData {
   headNodeId: string;
   counters: { node: number; segment: number };
   isComplete: boolean;
+  /** 차량 설정 (옵셔널 — 기존 맵 호환) */
+  vehicleConfig?: {
+    type: string;
+    trainCount: number;
+    carsPerTrain: number;
+  };
   /** 테스트 운행 완주 통계 (옵셔널 — 기존 맵 호환) */
   stats?: {
     maxSpeed: number;
