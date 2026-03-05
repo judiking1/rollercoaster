@@ -1,20 +1,23 @@
 /**
  * Vehicle.tsx — 차량 3D 렌더링 + 물리 시뮬레이션
- * 각 라이드별 독립 실행. useFrame 내 ref 기반 물리, 주기적 스토어 동기화.
- * 포커스된 차량만 vehicleRef에 트랜스폼 기록 (카메라 연동).
+ * 멀티카/멀티트레인 지원. vehicleConfig(type, carsPerTrain, trainCount) 실반영.
+ * useFrame 내 ref 기반 물리, 주기적 스토어 동기화.
+ * 포커스된 열차 0의 car 0만 vehicleRef에 트랜스폼 기록 (카메라 연동).
  * 3가지 모드: parked (정차), running (운행중), hidden (미완성)
  */
 
-import { useRef, useMemo, useEffect } from 'react';
+import { useRef, useMemo, useEffect, memo } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import type { Ride } from '../../../core/types/index.ts';
-import type { VehicleFrameState } from '../../../core/types/ride.ts';
-import { RIDE_DEFINITIONS } from '../../../core/types/ride.ts';
-import type { SegmentRange } from '../../../core/systems/PhysicsSystem.ts';
+import type { VehicleFrameState, VehicleStyleDef } from '../../../core/types/ride.ts';
+import { RIDE_DEFINITIONS, VEHICLE_STYLES } from '../../../core/types/ride.ts';
+import type { SegmentRange, SampledPath } from '../../../core/systems/PhysicsSystem.ts';
 import {
-  buildArcLengthTable,
-  distanceToT,
+  buildSampledPath,
+  samplePositionAndTangent,
+  sampleY,
+  samplePosition,
   getSpecialTypeAtDistance,
   physicsStep,
   calculateCurvatureRadius,
@@ -29,6 +32,7 @@ import {
   INITIAL_LAUNCH_SPEED,
   MAX_DELTA_TIME,
   SPEED_SYNC_INTERVAL_MS,
+  CAR_SPACING,
 } from '../../../core/constants/index.ts';
 import { buildCurvePoints } from '../track/trackCurveUtils.ts';
 import useRideTestStore from '../../../store/useRideTestStore.ts';
@@ -44,7 +48,166 @@ const WHEEL_WIDTH = 0.08;
 const BODY_Y = WHEEL_RADIUS + 0.05;
 /** 바퀴 앞뒤 간격 */
 const WHEEL_Z_OFFSET = 0.6;
+/** 트랙 레일 위 오프셋 */
+const TRACK_Y_OFFSET = 0.15;
 
+/** 바퀴 geometry/material (공유 인스턴스) */
+const wheelGeometry = new THREE.CylinderGeometry(WHEEL_RADIUS, WHEEL_RADIUS, WHEEL_WIDTH, 12);
+const wheelMaterial = new THREE.MeshStandardMaterial({ color: '#333333', metalness: 0.6, roughness: 0.3 });
+/** 바퀴 플랜지 (레일 위 걸림부) */
+const flangeGeometry = new THREE.CylinderGeometry(WHEEL_RADIUS + 0.03, WHEEL_RADIUS + 0.03, 0.02, 12);
+const flangeMaterial = new THREE.MeshStandardMaterial({ color: '#444444', metalness: 0.7, roughness: 0.3 });
+/** 하부 프레임 material */
+const frameMaterial = new THREE.MeshStandardMaterial({ color: '#555555', metalness: 0.5, roughness: 0.4 });
+/** 좌석 material */
+const seatMaterial = new THREE.MeshStandardMaterial({ color: '#222222' });
+/** 안전바 material */
+const barMaterial = new THREE.MeshStandardMaterial({ color: '#666666', metalness: 0.7, roughness: 0.3 });
+/** 차축 material */
+const axleMaterial = new THREE.MeshStandardMaterial({ color: '#444444', metalness: 0.6 });
+
+const defaultStyle: VehicleStyleDef = {
+  bodyColor: '#CC2222',
+  frontColor: '#AA1111',
+  rearColor: '#991111',
+  hasSidePanels: true,
+};
+
+/* ============================================
+ * 재사용 임시 객체 (GC 방지)
+ * useFrame 내에서 new Vector3() 대신 사용
+ * ============================================ */
+const _pos = new THREE.Vector3();
+const _tangent = new THREE.Vector3();
+const _up = new THREE.Vector3(0, 1, 0);
+const _right = new THREE.Vector3();
+const _correctedUp = new THREE.Vector3();
+const _negTangent = new THREE.Vector3();
+const _mat4 = new THREE.Matrix4();
+const _quat = new THREE.Quaternion();
+
+/* ============================================
+ * SingleCar — 개별 차량 1대 메쉬
+ * ============================================ */
+interface SingleCarProps {
+  vehicleType: string;
+}
+
+const SingleCar = memo(function SingleCar({ vehicleType }: SingleCarProps) {
+  const style = VEHICLE_STYLES[vehicleType] ?? defaultStyle;
+
+  return (
+    <group>
+      {/* 하부 프레임 (대차) */}
+      <mesh position={[0, BODY_Y - 0.02, 0]} material={frameMaterial} castShadow>
+        <boxGeometry args={[RAIL_OFFSET * 2 + 0.2, 0.06, 1.6]} />
+      </mesh>
+
+      {/* 객차 본체 */}
+      <mesh position={[0, BODY_Y + 0.28, 0]} castShadow>
+        <boxGeometry args={[1.0, 0.5, 1.6]} />
+        <meshStandardMaterial color={style.bodyColor} />
+      </mesh>
+
+      {/* 객차 전면 */}
+      <mesh position={[0, BODY_Y + 0.28, 0.9]} castShadow>
+        <boxGeometry args={[0.96, 0.46, 0.2]} />
+        <meshStandardMaterial color={style.frontColor} />
+      </mesh>
+
+      {/* 객차 후면 */}
+      <mesh position={[0, BODY_Y + 0.35, -0.9]} castShadow>
+        <boxGeometry args={[0.96, 0.55, 0.15]} />
+        <meshStandardMaterial color={style.rearColor} />
+      </mesh>
+
+      {/* 좌석 등받이 + 안전바 (hasSidePanels일 때만) */}
+      {style.hasSidePanels && (
+        <>
+          <mesh position={[0, BODY_Y + 0.55, -0.3]} material={seatMaterial} castShadow>
+            <boxGeometry args={[0.85, 0.3, 0.08]} />
+          </mesh>
+          <mesh position={[-0.35, BODY_Y + 0.55, 0.15]} material={barMaterial}>
+            <boxGeometry args={[0.05, 0.25, 0.6]} />
+          </mesh>
+          <mesh position={[0.35, BODY_Y + 0.55, 0.15]} material={barMaterial}>
+            <boxGeometry args={[0.05, 0.25, 0.6]} />
+          </mesh>
+        </>
+      )}
+
+      {/* === 바퀴 (4개) === */}
+      <mesh geometry={wheelGeometry} material={wheelMaterial}
+        position={[-RAIL_OFFSET, WHEEL_RADIUS, WHEEL_Z_OFFSET]} rotation={[0, 0, Math.PI / 2]} />
+      <mesh geometry={flangeGeometry} material={flangeMaterial}
+        position={[-RAIL_OFFSET - WHEEL_WIDTH / 2 - 0.01, WHEEL_RADIUS, WHEEL_Z_OFFSET]} rotation={[0, 0, Math.PI / 2]} />
+
+      <mesh geometry={wheelGeometry} material={wheelMaterial}
+        position={[RAIL_OFFSET, WHEEL_RADIUS, WHEEL_Z_OFFSET]} rotation={[0, 0, Math.PI / 2]} />
+      <mesh geometry={flangeGeometry} material={flangeMaterial}
+        position={[RAIL_OFFSET + WHEEL_WIDTH / 2 + 0.01, WHEEL_RADIUS, WHEEL_Z_OFFSET]} rotation={[0, 0, Math.PI / 2]} />
+
+      <mesh geometry={wheelGeometry} material={wheelMaterial}
+        position={[-RAIL_OFFSET, WHEEL_RADIUS, -WHEEL_Z_OFFSET]} rotation={[0, 0, Math.PI / 2]} />
+      <mesh geometry={flangeGeometry} material={flangeMaterial}
+        position={[-RAIL_OFFSET - WHEEL_WIDTH / 2 - 0.01, WHEEL_RADIUS, -WHEEL_Z_OFFSET]} rotation={[0, 0, Math.PI / 2]} />
+
+      <mesh geometry={wheelGeometry} material={wheelMaterial}
+        position={[RAIL_OFFSET, WHEEL_RADIUS, -WHEEL_Z_OFFSET]} rotation={[0, 0, Math.PI / 2]} />
+      <mesh geometry={flangeGeometry} material={flangeMaterial}
+        position={[RAIL_OFFSET + WHEEL_WIDTH / 2 + 0.01, WHEEL_RADIUS, -WHEEL_Z_OFFSET]} rotation={[0, 0, Math.PI / 2]} />
+
+      {/* 차축 */}
+      <mesh position={[0, WHEEL_RADIUS, WHEEL_Z_OFFSET]} rotation={[0, 0, Math.PI / 2]} material={axleMaterial}>
+        <cylinderGeometry args={[0.03, 0.03, RAIL_OFFSET * 2, 6]} />
+      </mesh>
+      <mesh position={[0, WHEEL_RADIUS, -WHEEL_Z_OFFSET]} rotation={[0, 0, Math.PI / 2]} material={axleMaterial}>
+        <cylinderGeometry args={[0.03, 0.03, RAIL_OFFSET * 2, 6]} />
+      </mesh>
+    </group>
+  );
+});
+
+/* ============================================
+ * 헬퍼: SampledPath 위 특정 거리에 group 배치
+ * — zero-allocation: 재사용 임시 객체 사용
+ * — tangent 기반 quaternion으로 경사면 정확 추적
+ * ============================================ */
+function placeOnCurve(
+  group: THREE.Group,
+  path: SampledPath,
+  distance: number,
+) {
+  const totalLen = path.totalLength;
+  const d = ((distance % totalLen) + totalLen) % totalLen;
+
+  // SampledPath에서 이진탐색 1회 + lerp
+  samplePositionAndTangent(path, d, _pos, _tangent);
+
+  group.position.copy(_pos);
+  group.position.y += TRACK_Y_OFFSET;
+
+  // Frenet-like frame: right = tangent × worldUp, correctedUp = right × tangent
+  _up.set(0, 1, 0);
+  _right.crossVectors(_tangent, _up);
+  if (_right.lengthSq() < 0.001) {
+    // 수직 구간: fallback up
+    _up.set(0, 0, 1);
+    _right.crossVectors(_tangent, _up);
+  }
+  _right.normalize();
+  _correctedUp.crossVectors(_right, _tangent).normalize();
+
+  // 회전 행렬: [right, correctedUp, -tangent] (Three.js는 -Z를 전방으로 사용)
+  _negTangent.copy(_tangent).negate();
+  _mat4.makeBasis(_right, _correctedUp, _negTangent);
+  _quat.setFromRotationMatrix(_mat4);
+  group.quaternion.copy(_quat);
+}
+
+/* ============================================
+ * Vehicle — 메인 컴포넌트
+ * ============================================ */
 interface VehicleProps {
   ride: Ride;
 }
@@ -93,46 +256,36 @@ function buildFullCurvePoints(ride: Ride): {
   return { points, segmentRanges };
 }
 
-/** 바퀴 geometry/material (공유 인스턴스) */
-const wheelGeometry = new THREE.CylinderGeometry(WHEEL_RADIUS, WHEEL_RADIUS, WHEEL_WIDTH, 12);
-const wheelMaterial = new THREE.MeshStandardMaterial({ color: '#333333', metalness: 0.6, roughness: 0.3 });
-/** 바퀴 플랜지 (레일 위 걸림부) */
-const flangeGeometry = new THREE.CylinderGeometry(WHEEL_RADIUS + 0.03, WHEEL_RADIUS + 0.03, 0.02, 12);
-const flangeMaterial = new THREE.MeshStandardMaterial({ color: '#444444', metalness: 0.7, roughness: 0.3 });
-
 export default function Vehicle({ ride }: VehicleProps) {
-  const groupRef = useRef<THREE.Group>(null);
+  const { trainCount, carsPerTrain, type: vehicleType } = ride.vehicleConfig;
+
+  // ref 배열: trainRefs[trainIdx][carIdx]
+  const trainRefs = useRef<(THREE.Group | null)[][]>([]);
   const frameState = useRef<VehicleFrameState>(createInitialFrameState());
   const lastSyncTime = useRef(0);
 
-  // 이 라이드가 활성 테스트 중인지 확인
   const isActive = useRideTestStore((s) => !!s.activeTests[ride.id]);
 
-  // 경로 데이터 생성: ride가 완성되었을 때만
+  // 경로 데이터 생성: ride 구조가 변경될 때만 재계산 (vehicleConfig 변경에 무관)
+  // CatmullRomCurve3를 빌드타임에 1회 샘플링 → SampledPath. 이후 curve 참조 제거.
   const pathData = useMemo(() => {
     if (!ride.isComplete) return null;
 
     const { points, segmentRanges: rawRanges } = buildFullCurvePoints(ride);
     if (points.length < 2) return null;
 
+    // 임시 curve: buildSampledPath 호출 후 GC 대상
     const curve = new THREE.CatmullRomCurve3(points, true, 'centripetal');
+    const path = buildSampledPath(curve, ARC_LENGTH_SAMPLES);
 
-    const samplePoints: { x: number; y: number; z: number }[] = [];
-    for (let i = 0; i <= ARC_LENGTH_SAMPLES; i++) {
-      const t = i / ARC_LENGTH_SAMPLES;
-      const p = curve.getPointAt(t);
-      samplePoints.push({ x: p.x, y: p.y, z: p.z });
-    }
-    const arcTable = buildArcLengthTable(samplePoints, ARC_LENGTH_SAMPLES);
-
+    // segmentRanges: 노드 인덱스 비율 → 샘플링된 누적 거리로 매핑
     const totalPoints = points.length;
     const segmentRanges: SegmentRange[] = rawRanges.map((r) => {
-      const startT = r.startDist / (totalPoints - 1);
-      const endT = r.endDist / (totalPoints - 1);
-      const startPos = curve.getPointAt(Math.min(startT, 1));
-      const endPos = curve.getPointAt(Math.min(endT, 1));
-      const startDist = findClosestDistance(startPos, samplePoints, arcTable);
-      const endDist = findClosestDistance(endPos, samplePoints, arcTable);
+      const startU = r.startDist / (totalPoints - 1);
+      const endU = r.endDist / (totalPoints - 1);
+      // u → SampledPath 인덱스 → 누적 거리 (선형 보간)
+      const startDist = uToDistance(path, Math.min(startU, 1));
+      const endDist = uToDistance(path, Math.min(endU, 1));
       return {
         startDist: Math.min(startDist, endDist),
         endDist: Math.max(startDist, endDist),
@@ -140,8 +293,9 @@ export default function Vehicle({ ride }: VehicleProps) {
       };
     });
 
-    return { curve, arcTable, segmentRanges };
-  }, [ride]);
+    return { path, segmentRanges };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ride.nodes, ride.segments, ride.isComplete]);
 
   // 테스트 시작 시 상태 초기화
   useEffect(() => {
@@ -152,44 +306,35 @@ export default function Vehicle({ ride }: VehicleProps) {
     }
   }, [isActive]);
 
-  // 정차(parked) 모드: 테스트 중이 아닌 완성된 라이드 → 정거장 시작 위치에 정적 배치
+  // 정차(parked) 모드: 모든 열차/차량을 곡선 위 정적 배치
   useEffect(() => {
-    if (!isActive && pathData && groupRef.current) {
-      const pos = pathData.curve.getPointAt(0);
-      const tangent = pathData.curve.getTangentAt(0).normalize();
-      groupRef.current.position.copy(pos);
-      groupRef.current.position.y += 0.15;
-      const lookTarget = pos.clone().add(tangent);
-      lookTarget.y = groupRef.current.position.y + tangent.y * 2;
-      groupRef.current.lookAt(lookTarget);
+    if (!isActive && pathData) {
+      parkAllTrains(trainRefs.current, pathData, trainCount, carsPerTrain);
     }
-  }, [isActive, pathData]);
+  }, [isActive, pathData, trainCount, carsPerTrain]);
 
   // 물리 시뮬레이션 + 렌더링 (매 프레임)
   useFrame((_state, delta) => {
-    // 정차 모드에서는 물리 연산 스킵
-    if (!isActive || !pathData || !groupRef.current) return;
+    if (!isActive || !pathData) return;
 
-    const { curve, arcTable, segmentRanges } = pathData;
+    const { path, segmentRanges } = pathData;
     const fs = frameState.current;
-
     const dt = Math.min(delta, MAX_DELTA_TIME);
+    const totalLen = path.totalLength;
 
     const rideType = ride.rideType as keyof typeof RIDE_DEFINITIONS;
     const rideDef = RIDE_DEFINITIONS[rideType] ?? RIDE_DEFINITIONS.steel_coaster;
     const { friction, airResistance } = rideDef.physics;
 
+    // 물리 시뮬레이션 (리드 트레인 기준) — SampledPath 기반 O(log n) lerp
     const specialType = getSpecialTypeAtDistance(fs.distance, segmentRanges);
+    const curY = sampleY(path, fs.distance);
 
-    const curT = distanceToT(fs.distance, arcTable);
-    const curPos = curve.getPointAt(curT);
-
-    const nextDist = (fs.distance + fs.speed * dt) % arcTable.totalLength;
-    const nextT = distanceToT(nextDist, arcTable);
-    const nextPos = curve.getPointAt(nextT);
+    const nextDist = (fs.distance + fs.speed * dt) % totalLen;
+    const nextY = sampleY(path, nextDist);
 
     fs.speed = physicsStep(
-      fs.speed, curPos.y, nextPos.y,
+      fs.speed, curY, nextY,
       dt, friction, airResistance, specialType,
     );
 
@@ -197,8 +342,8 @@ export default function Vehicle({ ride }: VehicleProps) {
     fs.elapsedTime += dt;
 
     // 1바퀴 완주 체크
-    if (fs.distance >= arcTable.totalLength) {
-      fs.distance -= arcTable.totalLength;
+    if (fs.distance >= totalLen) {
+      fs.distance -= totalLen;
 
       if (!fs.hasCompletedLap) {
         fs.hasCompletedLap = true;
@@ -207,216 +352,143 @@ export default function Vehicle({ ride }: VehicleProps) {
           maxHeight: fs.maxHeight,
           maxGForce: fs.maxGForce,
           maxLateralG: fs.maxLateralG,
-          trackLength: arcTable.totalLength,
+          trackLength: totalLen,
           rideTime: fs.elapsedTime,
         });
-        return; // 테스트 종료 → isActive=false → parked useEffect 발동
+        return;
       }
     }
 
-    // 최종 위치 계산
-    const finalT = distanceToT(fs.distance, arcTable);
-    const pos = curve.getPointAt(finalT);
-    const tangent = curve.getTangentAt(finalT).normalize();
+    // 모든 열차/차량 배치
+    const trainSpacing = totalLen / trainCount;
+    for (let ti = 0; ti < trainCount; ti++) {
+      const trainDist = fs.distance + ti * trainSpacing;
+      const trainCars = trainRefs.current[ti];
+      if (!trainCars) continue;
 
-    // 그룹 위치/방향 설정
-    groupRef.current.position.copy(pos);
-    groupRef.current.position.y += 0.15; // 트랙 레일 위 오프셋
+      for (let ci = 0; ci < carsPerTrain; ci++) {
+        const carGroup = trainCars[ci];
+        if (!carGroup) continue;
+        placeOnCurve(carGroup, path, trainDist - ci * CAR_SPACING);
+      }
+    }
 
-    const lookTarget = pos.clone().add(tangent);
-    lookTarget.y = groupRef.current.position.y + (tangent.y * 2);
-    groupRef.current.lookAt(lookTarget);
+    // 리드 카 거리로 통계/카메라 계산 (한 번만)
+    const leadDist = ((fs.distance % totalLen) + totalLen) % totalLen;
+    samplePositionAndTangent(path, leadDist, _pos, _tangent);
+    const posY = _pos.y;
 
-    // 포커스된 차량이면 카메라 ref 기록
+    // 포커스된 차량이면 카메라 ref 기록 (열차 0, car 0)
+    const leadCar = trainRefs.current[0]?.[0];
     const store = useRideTestStore.getState();
-    if (store.focusedRideId === ride.id) {
-      vehicleTransform.position.copy(groupRef.current.position);
-      vehicleTransform.tangent.copy(tangent);
+    if (store.focusedRideId === ride.id && leadCar) {
+      vehicleTransform.position.copy(leadCar.position);
+      vehicleTransform.tangent.copy(_tangent);
       vehicleTransform.active = true;
     }
 
-    // G-Force 계산
-    const gStep = 0.005;
-    const tPrev = Math.max(0, finalT - gStep);
-    const tNext = Math.min(1, finalT + gStep);
-    const pPrev = curve.getPointAt(tPrev);
-    const pCur = curve.getPointAt(finalT);
-    const pNext = curve.getPointAt(tNext);
-
-    const slopeAngle = calculateSlopeAngle(pPrev, pNext);
-    const radius = calculateCurvatureRadius(pPrev, pCur, pNext);
-    const verticalG = calculateVerticalGForce(fs.speed, radius, slopeAngle);
-
-    const hRadius = calculateHorizontalCurvatureRadius(pPrev, pCur, pNext);
-    const lateralG = calculateLateralGForce(fs.speed, hRadius);
-
-    // 통계 업데이트
-    fs.maxSpeed = Math.max(fs.maxSpeed, fs.speed);
-    fs.maxHeight = Math.max(fs.maxHeight, pos.y);
-    fs.maxGForce = Math.max(fs.maxGForce, Math.abs(verticalG));
-    fs.maxLateralG = Math.max(fs.maxLateralG, Math.abs(lateralG));
-
-    // 주기적 스토어 동기화
+    // G-Force 계산 — 주기적으로만 (매 프레임 불필요)
     const now = performance.now();
     if (now - lastSyncTime.current > SPEED_SYNC_INTERVAL_MS) {
       lastSyncTime.current = now;
+
+      // 거리 기반 3점 샘플링 (G-Force용)
+      const gDist = totalLen * 0.005; // 총 길이의 0.5%
+      const dPrev = ((leadDist - gDist) % totalLen + totalLen) % totalLen;
+      const dNext = (leadDist + gDist) % totalLen;
+
+      const pPrev = { x: 0, y: 0, z: 0 };
+      const pCur = { x: _pos.x, y: _pos.y, z: _pos.z };
+      const pNext = { x: 0, y: 0, z: 0 };
+      samplePosition(path, dPrev, pPrev);
+      samplePosition(path, dNext, pNext);
+
+      const slopeAngle = calculateSlopeAngle(pPrev, pNext);
+      const radius = calculateCurvatureRadius(pPrev, pCur, pNext);
+      const verticalG = calculateVerticalGForce(fs.speed, radius, slopeAngle);
+      const hRadius = calculateHorizontalCurvatureRadius(pPrev, pCur, pNext);
+      const lateralG = calculateLateralGForce(fs.speed, hRadius);
+
       useRideTestStore.getState().syncFromVehicle(
-        ride.id, fs.speed, pos.y, verticalG, lateralG,
+        ride.id, fs.speed, posY, verticalG, lateralG,
       );
+
+      fs.maxGForce = Math.max(fs.maxGForce, Math.abs(verticalG));
+      fs.maxLateralG = Math.max(fs.maxLateralG, Math.abs(lateralG));
     }
+
+    // 통계 업데이트 (매 프레임 — 싸다)
+    fs.maxSpeed = Math.max(fs.maxSpeed, fs.speed);
+    fs.maxHeight = Math.max(fs.maxHeight, posY);
   });
 
   // 미완성 라이드이거나 경로 데이터 없으면 렌더링 안함
   if (!ride.isComplete || !pathData) return null;
 
+  // ref 배열 크기 동기화
+  if (trainRefs.current.length !== trainCount) {
+    trainRefs.current = Array.from({ length: trainCount }, () =>
+      Array.from<THREE.Group | null>({ length: carsPerTrain }).fill(null),
+    );
+  }
+  for (let ti = 0; ti < trainCount; ti++) {
+    if (!trainRefs.current[ti] || trainRefs.current[ti].length !== carsPerTrain) {
+      trainRefs.current[ti] = Array.from<THREE.Group | null>({ length: carsPerTrain }).fill(null);
+    }
+  }
+
   return (
-    <group ref={groupRef}>
-      {/* === 차량 본체 === */}
-      {/* 하부 프레임 (대차) */}
-      <mesh position={[0, BODY_Y - 0.02, 0]} castShadow>
-        <boxGeometry args={[RAIL_OFFSET * 2 + 0.2, 0.06, 1.6]} />
-        <meshStandardMaterial color="#555555" metalness={0.5} roughness={0.4} />
-      </mesh>
-
-      {/* 객차 본체 */}
-      <mesh position={[0, BODY_Y + 0.28, 0]} castShadow>
-        <boxGeometry args={[1.0, 0.5, 1.6]} />
-        <meshStandardMaterial color="#CC2222" />
-      </mesh>
-
-      {/* 객차 전면 (경사) */}
-      <mesh position={[0, BODY_Y + 0.28, 0.9]} castShadow>
-        <boxGeometry args={[0.96, 0.46, 0.2]} />
-        <meshStandardMaterial color="#AA1111" />
-      </mesh>
-
-      {/* 객차 후면 */}
-      <mesh position={[0, BODY_Y + 0.35, -0.9]} castShadow>
-        <boxGeometry args={[0.96, 0.55, 0.15]} />
-        <meshStandardMaterial color="#991111" />
-      </mesh>
-
-      {/* 좌석 등받이 */}
-      <mesh position={[0, BODY_Y + 0.55, -0.3]} castShadow>
-        <boxGeometry args={[0.85, 0.3, 0.08]} />
-        <meshStandardMaterial color="#222222" />
-      </mesh>
-
-      {/* 안전 바 */}
-      <mesh position={[-0.35, BODY_Y + 0.55, 0.15]}>
-        <boxGeometry args={[0.05, 0.25, 0.6]} />
-        <meshStandardMaterial color="#666666" metalness={0.7} roughness={0.3} />
-      </mesh>
-      <mesh position={[0.35, BODY_Y + 0.55, 0.15]}>
-        <boxGeometry args={[0.05, 0.25, 0.6]} />
-        <meshStandardMaterial color="#666666" metalness={0.7} roughness={0.3} />
-      </mesh>
-
-      {/* === 바퀴 (4개) — 레일 위에 위치 === */}
-      {/* 좌측 전방 바퀴 */}
-      <mesh
-        geometry={wheelGeometry}
-        material={wheelMaterial}
-        position={[-RAIL_OFFSET, WHEEL_RADIUS, WHEEL_Z_OFFSET]}
-        rotation={[0, 0, Math.PI / 2]}
-      />
-      <mesh
-        geometry={flangeGeometry}
-        material={flangeMaterial}
-        position={[-RAIL_OFFSET - WHEEL_WIDTH / 2 - 0.01, WHEEL_RADIUS, WHEEL_Z_OFFSET]}
-        rotation={[0, 0, Math.PI / 2]}
-      />
-
-      {/* 우측 전방 바퀴 */}
-      <mesh
-        geometry={wheelGeometry}
-        material={wheelMaterial}
-        position={[RAIL_OFFSET, WHEEL_RADIUS, WHEEL_Z_OFFSET]}
-        rotation={[0, 0, Math.PI / 2]}
-      />
-      <mesh
-        geometry={flangeGeometry}
-        material={flangeMaterial}
-        position={[RAIL_OFFSET + WHEEL_WIDTH / 2 + 0.01, WHEEL_RADIUS, WHEEL_Z_OFFSET]}
-        rotation={[0, 0, Math.PI / 2]}
-      />
-
-      {/* 좌측 후방 바퀴 */}
-      <mesh
-        geometry={wheelGeometry}
-        material={wheelMaterial}
-        position={[-RAIL_OFFSET, WHEEL_RADIUS, -WHEEL_Z_OFFSET]}
-        rotation={[0, 0, Math.PI / 2]}
-      />
-      <mesh
-        geometry={flangeGeometry}
-        material={flangeMaterial}
-        position={[-RAIL_OFFSET - WHEEL_WIDTH / 2 - 0.01, WHEEL_RADIUS, -WHEEL_Z_OFFSET]}
-        rotation={[0, 0, Math.PI / 2]}
-      />
-
-      {/* 우측 후방 바퀴 */}
-      <mesh
-        geometry={wheelGeometry}
-        material={wheelMaterial}
-        position={[RAIL_OFFSET, WHEEL_RADIUS, -WHEEL_Z_OFFSET]}
-        rotation={[0, 0, Math.PI / 2]}
-      />
-      <mesh
-        geometry={flangeGeometry}
-        material={flangeMaterial}
-        position={[RAIL_OFFSET + WHEEL_WIDTH / 2 + 0.01, WHEEL_RADIUS, -WHEEL_Z_OFFSET]}
-        rotation={[0, 0, Math.PI / 2]}
-      />
-
-      {/* 차축 (전방/후방) */}
-      <mesh position={[0, WHEEL_RADIUS, WHEEL_Z_OFFSET]} rotation={[0, 0, Math.PI / 2]}>
-        <cylinderGeometry args={[0.03, 0.03, RAIL_OFFSET * 2, 6]} />
-        <meshStandardMaterial color="#444444" metalness={0.6} />
-      </mesh>
-      <mesh position={[0, WHEEL_RADIUS, -WHEEL_Z_OFFSET]} rotation={[0, 0, Math.PI / 2]}>
-        <cylinderGeometry args={[0.03, 0.03, RAIL_OFFSET * 2, 6]} />
-        <meshStandardMaterial color="#444444" metalness={0.6} />
-      </mesh>
-    </group>
+    <>
+      {Array.from({ length: trainCount }, (_, ti) => (
+        Array.from({ length: carsPerTrain }, (_, ci) => (
+          <group
+            key={`train-${ti}-car-${ci}`}
+            ref={(el) => {
+              if (trainRefs.current[ti]) {
+                trainRefs.current[ti][ci] = el;
+              }
+            }}
+          >
+            <SingleCar vehicleType={vehicleType} />
+          </group>
+        ))
+      ))}
+    </>
   );
 }
 
-/** 주어진 위치에서 가장 가까운 누적 거리를 찾는 헬퍼 */
-function findClosestDistance(
-  target: THREE.Vector3,
-  samplePoints: readonly { x: number; y: number; z: number }[],
-  arcTable: { distances: Float64Array; sampleCount: number },
-): number {
-  let minDistSq = Infinity;
-  let closestIdx = 0;
+/** 정차 모드: 모든 열차/차량을 곡선 위 균등 간격 정적 배치 */
+function parkAllTrains(
+  refs: (THREE.Group | null)[][],
+  pathData: { path: SampledPath },
+  trainCount: number,
+  carsPerTrain: number,
+) {
+  const { path } = pathData;
+  const totalLen = path.totalLength;
 
-  const step = Math.max(1, Math.floor(samplePoints.length / 100));
-  for (let i = 0; i < samplePoints.length; i += step) {
-    const p = samplePoints[i];
-    const dx = target.x - p.x;
-    const dy = target.y - p.y;
-    const dz = target.z - p.z;
-    const dSq = dx * dx + dy * dy + dz * dz;
-    if (dSq < minDistSq) {
-      minDistSq = dSq;
-      closestIdx = i;
+  for (let ti = 0; ti < trainCount; ti++) {
+    const trainOffset = ti * (totalLen / trainCount);
+    const trainCars = refs[ti];
+    if (!trainCars) continue;
+
+    for (let ci = 0; ci < carsPerTrain; ci++) {
+      const carGroup = trainCars[ci];
+      if (!carGroup) continue;
+      const carDist = trainOffset - ci * CAR_SPACING;
+      placeOnCurve(carGroup, path, carDist);
     }
   }
+}
 
-  const searchStart = Math.max(0, closestIdx - step);
-  const searchEnd = Math.min(samplePoints.length - 1, closestIdx + step);
-  for (let i = searchStart; i <= searchEnd; i++) {
-    const p = samplePoints[i];
-    const dx = target.x - p.x;
-    const dy = target.y - p.y;
-    const dz = target.z - p.z;
-    const dSq = dx * dx + dy * dy + dz * dz;
-    if (dSq < minDistSq) {
-      minDistSq = dSq;
-      closestIdx = i;
-    }
-  }
-
-  return arcTable.distances[closestIdx];
+/**
+ * 균등 u (0~1) → SampledPath 누적 거리 변환.
+ * SampledPath는 균등 u 간격으로 샘플링되었으므로, u × sampleCount로 인덱스 + 보간.
+ */
+function uToDistance(path: SampledPath, u: number): number {
+  const idx = u * path.sampleCount;
+  const i0 = Math.min(Math.floor(idx), path.sampleCount - 1);
+  const i1 = i0 + 1;
+  const frac = idx - i0;
+  return path.distances[i0] + (path.distances[i1] - path.distances[i0]) * frac;
 }

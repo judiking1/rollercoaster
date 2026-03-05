@@ -494,15 +494,15 @@ Phase 0 (리셋/스캐폴드)
 - [x] 클릭 시 드롭다운: 놀이기구 이름, 완성 상태(초록/노란 dot), 세그먼트 수
 - [x] 항목 클릭 → 선택 + 정보 패널 열기
 
-### 6-5. 차량 설정 실반영 (미구현)
+### 6-5. 차량 설정 실반영
 
-- [ ] vehicleConfig 변경 시 실제 차량 외형에 반영 (차량 모델 교체)
-- [ ] 열차 수 설정 → 동시 운행 열차 수 반영 (멀티 트레인)
-- [ ] 칸 수 설정 → 열차 길이 반영 (연결된 차량 렌더링)
+- [x] vehicleConfig 변경 시 실제 차량 외형에 반영 (차량 모델 교체)
+- [x] 열차 수 설정 → 동시 운행 열차 수 반영 (멀티 트레인)
+- [x] 칸 수 설정 → 열차 길이 반영 (연결된 차량 렌더링)
 
 ### 6-6. 테스트 운행 중지 시 초기 상태 복원
 
-- [ ] 테스트 운행 중지 시 차량/카메라를 초기 놀이기구 상태로 복원
+- [x] 테스트 운행 중지 시 차량/카메라를 초기 놀이기구 상태로 복원
   - 차량 위치를 정거장으로 리셋
   - 카메라를 운행 시작 전 위치/타겟으로 복원
   - 운행 중 변경된 상태 정리 (실시간 통계 등)
@@ -523,21 +523,61 @@ Phase 0 (리셋/스캐폴드)
 
 **선행 조건**: Phase 6 완료 (놀이기구 CRUD 완성)
 
-### 태스크
+### 7-1. 타입 정의
 
-- [ ] 놀이기구 프리셋 저장/불러오기
-- [ ] 배치 모드: 반투명 프리뷰가 마우스를 따라다님
-- [ ] 회전: Q/E 키로 90도 단위 회전
-- [ ] 지형 충돌 검사: 배치 가능 여부 표시 (초록/빨강)
-- [ ] 클릭으로 배치 확정
-- [ ] 배치 후 지지대 자동 생성
+- [ ] `common.ts`에 GameMode `'preset'` 추가
+- [ ] `track.ts`에 RidePreset, PresetNode, PresetSegment 인터페이스 추가
+
+### 7-2. PresetSystem.ts — 순수 함수 (신규)
+
+- [ ] `rideToPreset(ride, name)` — station_start 기준 상대 좌표 변환, 그래프 순회, localIndex 매핑
+- [ ] `resolvePresetPositions(preset, targetPos, targetDir)` — 회전+이동 절대 좌표 복원
+- [ ] `rotatePositionY(pos, angleDeg)` — Y축 회전 (90도 단위)
+- [ ] `validatePresetPlacement(resolvedNodes, station, existingRides, getTerrainHeight)` — 지하/충돌 검증
+- [ ] `presetToRide(preset, resolvedNodes, station, rideId)` — 새 ID로 완성 Ride 생성
+
+### 7-3. usePresetStore.ts — 상태 관리 (신규)
+
+- [ ] 프리셋 목록, 배치 모드 상태, previewPosition/Direction/Valid
+- [ ] localStorage 연동 (저장/로드)
+- [ ] savePreset, deletePreset, setActivePreset, rotatePreview, resetPlacement
+
+### 7-4. useTrackStore 확장
+
+- [ ] `addPresetRide(ride)` 액션 추가
+
+### 7-5. usePresetPlacer.ts — 배치 인터랙션 훅 (신규)
+
+- [ ] handleTerrainHover: snapToGrid → resolvePresetPositions → validate → updatePreview
+- [ ] handleTerrainClick: presetToRide → addPresetRide → 배치 확정
+- [ ] Q/E 키 회전, ESC 취소
+
+### 7-6. PresetPreview.tsx — 3D 프리뷰 (신규)
+
+- [ ] resolvePresetPositions → CatmullRomCurve3 → TubeGeometry 반투명 렌더링
+- [ ] valid=초록, invalid=빨강, 정거장 ghost 박스
+
+### 7-7. UI 통합
+
+- [ ] IconPreset 아이콘 추가
+- [ ] PresetBrowser.tsx — 드롭다운 목록 (이름, rideType, segmentCount, 삭제)
+- [ ] TopBar.tsx — 프리셋 버튼 + PresetBrowser 드롭다운
+- [ ] BottomBar.tsx — `gameMode === 'preset'` 힌트 패널 (Q/E 회전, 클릭 배치, ESC 취소)
+- [ ] RideInfoPanel.tsx — "프리셋으로 저장" 버튼
+- [ ] Scene.tsx — PresetPreview 렌더, gameMode='preset' 마우스 연결
 
 **생성 파일**:
-`src/hooks/usePresetPlacer.ts`, `src/components/ui/PresetBrowser.tsx`
+`src/core/systems/PresetSystem.ts`, `src/store/usePresetStore.ts`,
+`src/hooks/usePresetPlacer.ts`, `src/components/three/ride/PresetPreview.tsx`,
+`src/components/ui/PresetBrowser.tsx`
 
 **완료 기준**:
-- 미리 만든 놀이기구를 다른 위치에 자유롭게 배치 가능
-- 프리셋 저장/불러오기/배치 전체 흐름 작동
+- 완성된 라이드 → "프리셋으로 저장" → PresetBrowser에 표시
+- 프리셋 선택 → 마우스 따라 반투명 프리뷰 이동, Q/E 90도 회전
+- 유효 위치: 초록, 불가 위치(지하/충돌): 빨강
+- 클릭 → 실제 라이드 배치 + 지지대 자동 생성
+- 배치된 라이드 테스트 운행 정상 동작
+- 브라우저 새로고침 후 프리셋 목록 유지 (localStorage)
 - `npx tsc --noEmit` 통과
 
 **테스트 체크포인트**: 시각적 확인 (프리셋 배치의 자연스러움)
@@ -597,6 +637,7 @@ Phase 0 (리셋/스캐폴드)
 
 | 날짜 | 내용 |
 |------|------|
+| 2026-03-06 | Phase 6-5/6-6 완료: 차량 설정 실반영(외형/멀티트레인/칸수), 테스트 운행 중지 시 초기 상태 복원. Phase 7 상세 계획 추가 |
 | 2026-03-05 | Phase 6: vehicleConfig 데이터 모델/UI, 놀이기구 목록 드롭다운 구현. 미구현 항목(차량 실반영, 운행 중지 복원) 계획 추가 |
 | 2026-03-02 | Phase 5.5 추가: BottomBar 컨텍스트 저장, 메뉴 드롭다운, 맵 리스트 드롭다운, 시계 표시 |
 | 2026-03-02 | Phase 5.5: UI/UX 시스템 재설계 — 아이콘 기반 TopBar/BottomBar, 트랙 클릭 선택 개선, HUD/GameScene 리팩토링 |

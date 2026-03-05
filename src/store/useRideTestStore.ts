@@ -4,7 +4,7 @@
  */
 
 import { create } from 'zustand';
-import type { RideCameraMode, RideStats } from '../core/types/ride.ts';
+import type { RideCameraMode, RideStats, SavedCameraState } from '../core/types/ride.ts';
 
 /** 개별 라이드 테스트 실시간 데이터 */
 interface RideTestEntry {
@@ -27,6 +27,8 @@ interface RideTestState {
   cameraMode: RideCameraMode;
   /** 라이드별 완주 통계 (영구 보관) */
   completedStatsMap: Record<string, RideStats>;
+  /** 테스트 시작 전 카메라 상태 (복원용) */
+  savedCameraState: SavedCameraState | null;
 }
 
 interface RideTestActions {
@@ -46,6 +48,10 @@ interface RideTestActions {
   setCompletedStats: (rideId: string, stats: RideStats) => void;
   /** 맵 로드 시 저장된 통계 복원 */
   restoreStats: (statsMap: Record<string, RideStats>) => void;
+  /** 테스트 시작 전 카메라 상태 저장 */
+  saveCameraState: (state: SavedCameraState) => void;
+  /** 저장된 카메라 상태 꺼내기 (반환 후 null로 클리어) */
+  popCameraState: () => SavedCameraState | null;
   /** 라이드가 테스트 중인지 확인 */
   isTestRunning: (rideId: string) => boolean;
   /** 활성 테스트 수 */
@@ -57,6 +63,7 @@ const useRideTestStore = create<RideTestState & RideTestActions>()((set, get) =>
   focusedRideId: null,
   cameraMode: 'free',
   completedStatsMap: {},
+  savedCameraState: null,
 
   startTest: (rideId) => set((s) => ({
     activeTests: {
@@ -126,6 +133,14 @@ const useRideTestStore = create<RideTestState & RideTestActions>()((set, get) =>
   }),
 
   restoreStats: (statsMap) => set({ completedStatsMap: statsMap }),
+
+  saveCameraState: (state) => set({ savedCameraState: state }),
+
+  popCameraState: () => {
+    const saved = get().savedCameraState;
+    if (saved) set({ savedCameraState: null });
+    return saved;
+  },
 
   isTestRunning: (rideId) => !!get().activeTests[rideId],
 

@@ -52,4 +52,5 @@ export {
   FIRST_PERSON_HEIGHT,
   THIRD_PERSON_BEHIND,
   THIRD_PERSON_ABOVE,
+  CAR_SPACING,
 } from './physics.ts';

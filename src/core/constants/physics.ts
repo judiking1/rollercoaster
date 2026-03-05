@@ -47,3 +47,6 @@ export const THIRD_PERSON_BEHIND = 8;
 
 /** 3인칭 카메라 상단 높이 */
 export const THIRD_PERSON_ABOVE = 5;
+
+/** 차량 중심 간 간격 (차체 1.6m + 연결부 0.4m) */
+export const CAR_SPACING = 2.0;

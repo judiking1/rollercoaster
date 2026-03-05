@@ -40,6 +40,47 @@ export interface VehicleConfig {
   carsPerTrain: number;
 }
 
+/** 차량 외형 스타일 정의 */
+export interface VehicleStyleDef {
+  bodyColor: string;
+  frontColor: string;
+  rearColor: string;
+  /** false이면 좌석 등받이/안전바 숨김 (플로어리스) */
+  hasSidePanels: boolean;
+}
+
+/** 차량 타입별 스타일 맵 */
+export const VEHICLE_STYLES: Record<string, VehicleStyleDef> = {
+  standard_car: {
+    bodyColor: '#CC2222',
+    frontColor: '#AA1111',
+    rearColor: '#991111',
+    hasSidePanels: true,
+  },
+  wooden_car: {
+    bodyColor: '#8B5E3C',
+    frontColor: '#7A4F30',
+    rearColor: '#6B4226',
+    hasSidePanels: true,
+  },
+  floorless_car: {
+    bodyColor: '#2255CC',
+    frontColor: '#1144AA',
+    rearColor: '#0E3388',
+    hasSidePanels: false,
+  },
+} as const;
+
+/** 카메라 복원용 저장 상태 (JSON 직렬화 가능) */
+export interface SavedCameraState {
+  posX: number;
+  posY: number;
+  posZ: number;
+  targetX: number;
+  targetY: number;
+  targetZ: number;
+}
+
 /** 테스트 운행 카메라 모드 */
 export type RideCameraMode = 'free' | 'firstPerson' | 'thirdPerson';
 
@@ -65,7 +106,7 @@ export const RIDE_DEFINITIONS = {
     category: 'coaster',
     availableSegments: ['straight', 'left_gentle', 'left_sharp', 'right_gentle', 'right_sharp', 'slope_up', 'slope_down'],
     availableSpecials: ['normal', 'chain_lift', 'brake', 'booster'],
-    vehicleOptions: ['standard_car'],
+    vehicleOptions: ['standard_car', 'floorless_car'],
     physics: {
       friction: 0.02,
       airResistance: 0.001,

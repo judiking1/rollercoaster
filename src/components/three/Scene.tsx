@@ -10,6 +10,7 @@ import { useRef, useEffect } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import { CameraControls } from '@react-three/drei';
 import CameraControlsImpl from 'camera-controls';
+import * as THREE from 'three';
 import Lighting from './Lighting.tsx';
 import Terrain from './terrain/Terrain.tsx';
 import Station from './ride/Station.tsx';
@@ -41,6 +42,9 @@ export default function Scene() {
   const cameraMode = useRideTestStore((s) => s.cameraMode);
   const { camera } = useThree();
 
+  // 포커스 전환 감지용
+  const prevFocusedRef = useRef<string | null>(null);
+
   // WASD 키 상태 추적
   const keysPressed = useRef<Set<string>>(new Set());
 
@@ -68,6 +72,44 @@ export default function Scene() {
     const isTestCamera = focusedRideId !== null && cameraMode !== 'free';
     controls.enabled = !isTestCamera;
   }, [focusedRideId, cameraMode]);
+
+  // 테스트 시작/종료 감지 → 카메라 저장/복원
+  useEffect(() => {
+    const prev = prevFocusedRef.current;
+    const cur = focusedRideId;
+    prevFocusedRef.current = cur;
+
+    const controls = controlsRef.current;
+    if (!controls) return;
+
+    // null → rideId: 테스트 시작 → 카메라 저장
+    if (prev === null && cur !== null) {
+      const target = new THREE.Vector3();
+      controls.getTarget(target);
+      useRideTestStore.getState().saveCameraState({
+        posX: camera.position.x,
+        posY: camera.position.y,
+        posZ: camera.position.z,
+        targetX: target.x,
+        targetY: target.y,
+        targetZ: target.z,
+      });
+    }
+
+    // rideId → null: 테스트 종료 → 카메라 복원
+    if (prev !== null && cur === null) {
+      const saved = useRideTestStore.getState().popCameraState();
+      if (saved) {
+        controls.enabled = true;
+        controls.setLookAt(
+          saved.posX, saved.posY, saved.posZ,
+          saved.targetX, saved.targetY, saved.targetZ,
+          true, // 부드러운 전환
+        );
+      }
+      vehicleTransform.active = false;
+    }
+  }, [focusedRideId, camera]);
 
   // 맵 로드 시 카메라를 맵 중앙으로 이동
   useEffect(() => {

@@ -350,6 +350,156 @@ export function calculateHorizontalCurvatureRadius(
   return (abLen * bcLen * acLen) / (4 * crossMag) || Infinity;
 }
 
+// ─── SampledPath (빌드타임 1회 샘플링, 런타임 O(log n) lerp) ──
+
+/**
+ * 빌드타임에 곡선 전체를 균등 u 간격으로 샘플링한 테이블.
+ * SoA 레이아웃: position(px,py,pz) + tangent(tx,ty,tz) + 누적 아크길이.
+ * 런타임에는 이진탐색 1회 + lerp만 수행, THREE curve 호출 완전 제거.
+ */
+export interface SampledPath {
+  distances: Float64Array;  // 누적 아크길이 [sampleCount+1]
+  px: Float64Array;         // X 위치
+  py: Float64Array;         // Y 위치
+  pz: Float64Array;         // Z 위치
+  tx: Float64Array;         // X tangent (정규화됨)
+  ty: Float64Array;         // Y tangent
+  tz: Float64Array;         // Z tangent
+  totalLength: number;
+  sampleCount: number;
+}
+
+/**
+ * THREE.CatmullRomCurve3에서 균등 u 간격으로 position+tangent 샘플링.
+ * 빌드타임 전용 (useMemo 내 1회 호출).
+ * @param curve CatmullRomCurve3 인스턴스
+ * @param sampleCount 샘플 수 (기본 1000)
+ */
+export function buildSampledPath(
+  curve: { getPointAt: (u: number) => { x: number; y: number; z: number }; getTangentAt: (u: number) => { x: number; y: number; z: number } },
+  sampleCount: number,
+): SampledPath {
+  const n = sampleCount + 1;
+  const distances = new Float64Array(n);
+  const px = new Float64Array(n);
+  const py = new Float64Array(n);
+  const pz = new Float64Array(n);
+  const tx = new Float64Array(n);
+  const ty = new Float64Array(n);
+  const tz = new Float64Array(n);
+
+  for (let i = 0; i < n; i++) {
+    const u = i / sampleCount;
+    // 빌드타임이므로 매번 새 Vector3 반환 — 할당 무관
+    const p = curve.getPointAt(u);
+    const t = curve.getTangentAt(u);
+
+    px[i] = p.x;
+    py[i] = p.y;
+    pz[i] = p.z;
+
+    // tangent 정규화
+    const len = Math.sqrt(t.x * t.x + t.y * t.y + t.z * t.z);
+    if (len > 1e-10) {
+      tx[i] = t.x / len;
+      ty[i] = t.y / len;
+      tz[i] = t.z / len;
+    } else {
+      tx[i] = 0;
+      ty[i] = 0;
+      tz[i] = 1;
+    }
+
+    // 누적 아크길이
+    if (i > 0) {
+      const dx = px[i] - px[i - 1];
+      const dy = py[i] - py[i - 1];
+      const dz = pz[i] - pz[i - 1];
+      distances[i] = distances[i - 1] + Math.sqrt(dx * dx + dy * dy + dz * dz);
+    }
+  }
+
+  return { distances, px, py, pz, tx, ty, tz, totalLength: distances[sampleCount], sampleCount };
+}
+
+/**
+ * SampledPath에서 distance → 구간 인덱스(low) + 보간 비율(frac)
+ * 이진탐색 1회. 내부 헬퍼.
+ */
+function spFindSegment(path: SampledPath, distance: number): [low: number, frac: number] {
+  const { distances, sampleCount } = path;
+
+  if (distance <= 0) return [0, 0];
+  if (distance >= path.totalLength) return [sampleCount - 1, 1];
+
+  let lo = 0;
+  let hi = sampleCount;
+  while (lo < hi - 1) {
+    const mid = (lo + hi) >> 1;
+    if (distances[mid] <= distance) lo = mid;
+    else hi = mid;
+  }
+
+  const dLo = distances[lo];
+  const dHi = distances[hi];
+  const range = dHi - dLo;
+  const frac = range > 1e-10 ? (distance - dLo) / range : 0;
+  return [lo, frac];
+}
+
+/**
+ * 런타임 핫패스: position + tangent 보간.
+ * 이진탐색 1회 + lerp, tangent renormalize.
+ * 0 allocation, Math.pow 0회.
+ */
+export function samplePositionAndTangent(
+  path: SampledPath,
+  distance: number,
+  outPos: { x: number; y: number; z: number },
+  outTan: { x: number; y: number; z: number },
+): void {
+  const [lo, frac] = spFindSegment(path, distance);
+  const hi = lo + 1;
+
+  outPos.x = path.px[lo] + (path.px[hi] - path.px[lo]) * frac;
+  outPos.y = path.py[lo] + (path.py[hi] - path.py[lo]) * frac;
+  outPos.z = path.pz[lo] + (path.pz[hi] - path.pz[lo]) * frac;
+
+  // tangent lerp + renormalize
+  let lx = path.tx[lo] + (path.tx[hi] - path.tx[lo]) * frac;
+  let ly = path.ty[lo] + (path.ty[hi] - path.ty[lo]) * frac;
+  let lz = path.tz[lo] + (path.tz[hi] - path.tz[lo]) * frac;
+  const len = Math.sqrt(lx * lx + ly * ly + lz * lz);
+  if (len > 1e-10) { lx /= len; ly /= len; lz /= len; }
+  outTan.x = lx;
+  outTan.y = ly;
+  outTan.z = lz;
+}
+
+/**
+ * Y 좌표만 빠르게 보간 (물리 높이 체크용).
+ * 이진탐색 1회 + 스칼라 lerp.
+ */
+export function sampleY(path: SampledPath, distance: number): number {
+  const [lo, frac] = spFindSegment(path, distance);
+  return path.py[lo] + (path.py[lo + 1] - path.py[lo]) * frac;
+}
+
+/**
+ * Position만 보간 (G-Force 3점 쿼리용).
+ */
+export function samplePosition(
+  path: SampledPath,
+  distance: number,
+  out: { x: number; y: number; z: number },
+): void {
+  const [lo, frac] = spFindSegment(path, distance);
+  const hi = lo + 1;
+  out.x = path.px[lo] + (path.px[hi] - path.px[lo]) * frac;
+  out.y = path.py[lo] + (path.py[hi] - path.py[lo]) * frac;
+  out.z = path.pz[lo] + (path.pz[hi] - path.pz[lo]) * frac;
+}
+
 /** 초기 차량 프레임 상태 생성 */
 export function createInitialFrameState(): VehicleFrameState {
   return {
