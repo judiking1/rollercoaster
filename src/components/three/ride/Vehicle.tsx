@@ -35,7 +35,7 @@ import {
   CAR_SPACING,
 } from '../../../core/constants/index.ts';
 import { buildCurvePoints } from '../track/trackCurveUtils.ts';
-import useRideTestStore from '../../../store/useRideTestStore.ts';
+import useRideTestStore, { writeLiveVehicleStats } from '../../../store/useRideTestStore.ts';
 import { vehicleTransform } from './vehicleRef.ts';
 
 /** 레일 간격 (TrackPath의 RAIL_OFFSET과 동일) */
@@ -409,9 +409,8 @@ export default function Vehicle({ ride }: VehicleProps) {
       const hRadius = calculateHorizontalCurvatureRadius(pPrev, pCur, pNext);
       const lateralG = calculateLateralGForce(fs.speed, hRadius);
 
-      useRideTestStore.getState().syncFromVehicle(
-        ride.id, fs.speed, posY, verticalG, lateralG,
-      );
+      // 뮤터블 버퍼에 직접 기록 (Zustand set() 없음 → 리렌더 제거)
+      writeLiveVehicleStats(ride.id, fs.speed, posY, verticalG, lateralG);
 
       fs.maxGForce = Math.max(fs.maxGForce, Math.abs(verticalG));
       fs.maxLateralG = Math.max(fs.maxLateralG, Math.abs(lateralG));

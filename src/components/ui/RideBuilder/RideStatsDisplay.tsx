@@ -4,7 +4,7 @@
  * 활성 테스트 목록 표시, 개별 중지 가능
  */
 
-import useRideTestStore from '../../../store/useRideTestStore.ts';
+import useRideTestStore, { useLiveVehicleData } from '../../../store/useRideTestStore.ts';
 import useTrackStore from '../../../store/useTrackStore.ts';
 import type { RideCameraMode } from '../../../core/types/ride.ts';
 
@@ -28,11 +28,12 @@ export default function RideStatsDisplay() {
   const setFocusedRide = useRideTestStore((s) => s.setFocusedRide);
   const rides = useTrackStore((s) => s.rides);
 
+  // 훅은 조건부 반환 전에 호출 (Rules of Hooks)
+  const focusedData = useLiveVehicleData(focusedRideId);
+
   const activeIds = Object.keys(activeTests);
   if (activeIds.length === 0) return null;
 
-  // 포커스된 라이드의 실시간 데이터
-  const focusedData = focusedRideId ? activeTests[focusedRideId] : null;
   const focusedRide = focusedRideId ? rides[focusedRideId] : null;
 
   return (

@@ -515,6 +515,26 @@ Phase 0 (리셋/스캐폴드)
 
 **테스트 체크포인트**: 놀이기구 포함 맵 직렬화/역직렬화 왕복 테스트
 
+### 6-7. 인프라 개선 (Phase 6 이후)
+
+- [x] **WebGPU 렌더러 점진적 전환 세팅**
+  - [x] `core/utils/webgpu.ts` — WebGPU 감지(`detectWebGPU`) + 렌더러 팩토리(`createWebGPURenderer`)
+  - [x] `store/useRendererStore.ts` — 렌더러 백엔드 상태 관리 (webgpu/webgl/unknown)
+  - [x] `GameScene.tsx` — Canvas에 async `gl` 팩토리 추가 (WebGPU 불가 시 자동 WebGL2 폴백)
+  - [x] `TopBar.tsx` — 렌더러 백엔드 배지 표시 (GPU=초록, GL=회색)
+  - [x] `tsconfig.app.json` — `@webgpu/types` 타입 추가
+  - [x] `package.json` — `@webgpu/types` devDependency 추가
+
+- [x] **테스트 운행 스터터링 수정 (성능 최적화)**
+  - [x] `useRideTestStore.ts` — 모듈 레벨 뮤터블 버퍼로 실시간 차량 데이터 분리
+    - `writeLiveVehicleStats()` — useFrame에서 Zustand set() 없이 직접 기록
+    - `useLiveVehicleData()` — UI용 폴링 훅 (자체 setInterval, 100ms)
+    - `activeTests` 타입을 `Record<string, true>`로 변경 (활성 여부만 추적)
+  - [x] `Vehicle.tsx` — `syncFromVehicle()` → `writeLiveVehicleStats()` 교체
+  - [x] `BottomBar.tsx`, `RideStatsDisplay.tsx` — `useLiveVehicleData()` 훅으로 폴링
+  - 원인: useFrame 내 100ms마다 Zustand set() 호출 → activeTests 전체 spread → HUD 리렌더
+  - 결과: useFrame에서 React 상태 변경 제거, 주기적 끊김 현상 해소
+
 ---
 
 ## Phase 7: 놀이기구 프리셋 배치 (M)
@@ -637,6 +657,7 @@ Phase 0 (리셋/스캐폴드)
 
 | 날짜 | 내용 |
 |------|------|
+| 2026-03-09 | Phase 6-7: WebGPU 렌더러 점진적 전환 세팅, 테스트 운행 스터터링 수정 (useFrame 내 Zustand set() 제거 → 뮤터블 버퍼 + 폴링 훅) |
 | 2026-03-06 | Phase 6-5/6-6 완료: 차량 설정 실반영(외형/멀티트레인/칸수), 테스트 운행 중지 시 초기 상태 복원. Phase 7 상세 계획 추가 |
 | 2026-03-05 | Phase 6: vehicleConfig 데이터 모델/UI, 놀이기구 목록 드롭다운 구현. 미구현 항목(차량 실반영, 운행 중지 복원) 계획 추가 |
 | 2026-03-02 | Phase 5.5 추가: BottomBar 컨텍스트 저장, 메뉴 드롭다운, 맵 리스트 드롭다운, 시계 표시 |

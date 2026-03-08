@@ -1,13 +1,18 @@
 /**
  * useRideTestStore.ts — 테스트 운행 상태 관리
  * 다중 동시 테스트 지원: 각 라이드 독립 실행, 카메라는 포커스 라이드 추적
+ *
+ * 실시간 차량 데이터(속도, 높이, G-Force)는 모듈 레벨 뮤터블 버퍼에 저장하여
+ * useFrame → Zustand set() 호출을 제거함 (리렌더 방지).
+ * UI는 useLiveVehicleData() 훅으로 폴링.
  */
 
 import { create } from 'zustand';
+import { useState, useEffect } from 'react';
 import type { RideCameraMode, RideStats, SavedCameraState } from '../core/types/ride.ts';
 
 /** 개별 라이드 테스트 실시간 데이터 */
-interface RideTestEntry {
+export interface RideTestEntry {
   /** 현재 속도 (m/s) */
   currentSpeed: number;
   /** 현재 높이 (m) */
@@ -18,9 +23,85 @@ interface RideTestEntry {
   currentLateralG: number;
 }
 
+/* ============================================
+ * 모듈 레벨 뮤터블 버퍼 — Zustand 외부
+ * Vehicle.tsx의 useFrame에서 직접 기록,
+ * UI는 useLiveVehicleData() 훅으로 폴링.
+ * ============================================ */
+const liveVehicleStats: Record<string, RideTestEntry> = {};
+
+/** useFrame 내에서 호출 — Zustand set() 없이 뮤터블 쓰기 */
+export function writeLiveVehicleStats(
+  rideId: string,
+  speed: number,
+  height: number,
+  verticalG: number,
+  lateralG: number,
+): void {
+  let entry = liveVehicleStats[rideId];
+  if (!entry) {
+    entry = { currentSpeed: 0, currentHeight: 0, currentVerticalG: 1, currentLateralG: 0 };
+    liveVehicleStats[rideId] = entry;
+  }
+  entry.currentSpeed = speed;
+  entry.currentHeight = height;
+  entry.currentVerticalG = verticalG;
+  entry.currentLateralG = lateralG;
+}
+
+/** 뮤터블 버퍼 읽기 (스냅샷 아님, 참조 반환) */
+export function readLiveVehicleStats(rideId: string): RideTestEntry | null {
+  return liveVehicleStats[rideId] ?? null;
+}
+
+/** 뮤터블 버퍼 항목 삭제 */
+export function clearLiveVehicleStats(rideId: string): void {
+  delete liveVehicleStats[rideId];
+}
+
+/** 뮤터블 버퍼 전체 삭제 */
+function clearAllLiveStats(): void {
+  for (const key of Object.keys(liveVehicleStats)) {
+    delete liveVehicleStats[key];
+  }
+}
+
+/**
+ * UI용 폴링 훅 — 뮤터블 버퍼에서 주기적으로 읽어 React 상태로 전달
+ * @param rideId 추적할 라이드 ID (null이면 null 반환)
+ * @param intervalMs 폴링 주기 (기본 100ms — 10 FPS UI 갱신)
+ */
+export function useLiveVehicleData(
+  rideId: string | null,
+  intervalMs = 100,
+): RideTestEntry | null {
+  const [data, setData] = useState<RideTestEntry | null>(null);
+
+  useEffect(() => {
+    if (!rideId) return;
+
+    const tick = () => {
+      const live = liveVehicleStats[rideId];
+      if (live) {
+        // 얕은 복사로 새 객체 생성 → React가 변경 감지
+        setData({ ...live });
+      }
+    };
+
+    // 즉시 1회 읽기
+    tick();
+    const id = setInterval(tick, intervalMs);
+    return () => clearInterval(id);
+  }, [rideId, intervalMs]);
+
+  // rideId가 null이면 stale data 무시
+  if (!rideId) return null;
+  return data;
+}
+
 interface RideTestState {
-  /** 활성 테스트 맵 (rideId → 실시간 데이터) */
-  activeTests: Record<string, RideTestEntry>;
+  /** 활성 테스트 셋 (rideId → true). 실시간 데이터는 뮤터블 버퍼에 저장. */
+  activeTests: Record<string, true>;
   /** 카메라가 추적하는 라이드 ID */
   focusedRideId: string | null;
   /** 카메라 모드 */
@@ -42,8 +123,6 @@ interface RideTestActions {
   setFocusedRide: (rideId: string | null) => void;
   /** 카메라 모드 변경 */
   setCameraMode: (mode: RideCameraMode) => void;
-  /** Vehicle에서 주기적으로 호출하여 UI 상태 동기화 */
-  syncFromVehicle: (rideId: string, speed: number, height: number, verticalG: number, lateralG: number) => void;
   /** 1바퀴 완주 시 통계 저장 + 테스트 종료 */
   setCompletedStats: (rideId: string, stats: RideStats) => void;
   /** 맵 로드 시 저장된 통계 복원 */
@@ -65,72 +144,60 @@ const useRideTestStore = create<RideTestState & RideTestActions>()((set, get) =>
   completedStatsMap: {},
   savedCameraState: null,
 
-  startTest: (rideId) => set((s) => ({
-    activeTests: {
-      ...s.activeTests,
-      [rideId]: {
-        currentSpeed: 0,
-        currentHeight: 0,
-        currentVerticalG: 1,
-        currentLateralG: 0,
-      },
-    },
-    focusedRideId: rideId,
-  })),
+  startTest: (rideId) => {
+    // 뮤터블 버퍼 초기화
+    writeLiveVehicleStats(rideId, 0, 0, 1, 0);
+    set((s) => ({
+      activeTests: { ...s.activeTests, [rideId]: true },
+      focusedRideId: rideId,
+    }));
+  },
 
-  stopTest: (rideId) => set((s) => {
-    const newTests = { ...s.activeTests };
-    delete newTests[rideId];
-    const remainingIds = Object.keys(newTests);
-    return {
-      activeTests: newTests,
-      // 포커스된 라이드가 중지되면 다른 활성 테스트로 전환
-      focusedRideId: s.focusedRideId === rideId
-        ? (remainingIds.length > 0 ? remainingIds[0] : null)
-        : s.focusedRideId,
-      cameraMode: remainingIds.length === 0 ? 'free' : s.cameraMode,
-    };
-  }),
+  stopTest: (rideId) => {
+    clearLiveVehicleStats(rideId);
+    set((s) => {
+      const newTests = { ...s.activeTests };
+      delete newTests[rideId];
+      const remainingIds = Object.keys(newTests);
+      return {
+        activeTests: newTests,
+        focusedRideId: s.focusedRideId === rideId
+          ? (remainingIds.length > 0 ? remainingIds[0] : null)
+          : s.focusedRideId,
+        cameraMode: remainingIds.length === 0 ? 'free' : s.cameraMode,
+      };
+    });
+  },
 
-  stopAllTests: () => set({
-    activeTests: {},
-    focusedRideId: null,
-    cameraMode: 'free',
-  }),
+  stopAllTests: () => {
+    clearAllLiveStats();
+    set({
+      activeTests: {},
+      focusedRideId: null,
+      cameraMode: 'free',
+    });
+  },
 
   setFocusedRide: (rideId) => set({ focusedRideId: rideId }),
 
   setCameraMode: (mode) => set({ cameraMode: mode }),
 
-  syncFromVehicle: (rideId, speed, height, verticalG, lateralG) => set((s) => {
-    if (!s.activeTests[rideId]) return s;
-    return {
-      activeTests: {
-        ...s.activeTests,
-        [rideId]: {
-          currentSpeed: speed,
-          currentHeight: height,
-          currentVerticalG: verticalG,
-          currentLateralG: lateralG,
-        },
-      },
-    };
-  }),
-
-  setCompletedStats: (rideId, stats) => set((s) => {
-    // 통계 저장 + 테스트 종료
-    const newTests = { ...s.activeTests };
-    delete newTests[rideId];
-    const remainingIds = Object.keys(newTests);
-    return {
-      completedStatsMap: { ...s.completedStatsMap, [rideId]: stats },
-      activeTests: newTests,
-      focusedRideId: s.focusedRideId === rideId
-        ? (remainingIds.length > 0 ? remainingIds[0] : null)
-        : s.focusedRideId,
-      cameraMode: remainingIds.length === 0 ? 'free' : s.cameraMode,
-    };
-  }),
+  setCompletedStats: (rideId, stats) => {
+    clearLiveVehicleStats(rideId);
+    set((s) => {
+      const newTests = { ...s.activeTests };
+      delete newTests[rideId];
+      const remainingIds = Object.keys(newTests);
+      return {
+        completedStatsMap: { ...s.completedStatsMap, [rideId]: stats },
+        activeTests: newTests,
+        focusedRideId: s.focusedRideId === rideId
+          ? (remainingIds.length > 0 ? remainingIds[0] : null)
+          : s.focusedRideId,
+        cameraMode: remainingIds.length === 0 ? 'free' : s.cameraMode,
+      };
+    });
+  },
 
   restoreStats: (statsMap) => set({ completedStatsMap: statsMap }),
 

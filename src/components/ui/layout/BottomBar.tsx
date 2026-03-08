@@ -9,7 +9,7 @@ import useTerrainStore from '../../../store/useTerrainStore.ts';
 import useTrackStore from '../../../store/useTrackStore.ts';
 import useMapStore from '../../../store/useMapStore.ts';
 import useTrackBuilder from '../../../hooks/useTrackBuilder.ts';
-import useRideTestStore from '../../../store/useRideTestStore.ts';
+import useRideTestStore, { useLiveVehicleData } from '../../../store/useRideTestStore.ts';
 import type { TerrainTool } from '../../../core/types/index.ts';
 import { SEGMENT_TYPES, SPECIAL_TYPES } from '../../../core/types/index.ts';
 import type { SegmentType, SpecialType } from '../../../core/types/index.ts';
@@ -352,7 +352,8 @@ function RideTestTools() {
   const rides = useTrackStore((s) => s.rides);
 
   const activeIds = Object.keys(activeTests);
-  const focusedData = focusedRideId ? activeTests[focusedRideId] : null;
+  // 뮤터블 버퍼 폴링 (Zustand 리렌더 대신 자체 setInterval)
+  const focusedData = useLiveVehicleData(focusedRideId);
   const focusedRide = focusedRideId ? rides[focusedRideId] : null;
 
   return (
