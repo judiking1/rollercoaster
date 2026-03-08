@@ -7,6 +7,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import useGameStore from '../../../store/useGameStore.ts';
 import useMapStore from '../../../store/useMapStore.ts';
 import useTrackStore from '../../../store/useTrackStore.ts';
+import useRendererStore from '../../../store/useRendererStore.ts';
 import useTrackBuilder from '../../../hooks/useTrackBuilder.ts';
 import IconButton from '../common/IconButton.tsx';
 import ToolDivider from '../common/ToolDivider.tsx';
@@ -43,6 +44,30 @@ function ClockDisplay() {
 function formatTime(): string {
   const now = new Date();
   return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+}
+
+/* ───────────── 렌더러 백엔드 배지 ───────────── */
+
+function RendererBadge() {
+  const backend = useRendererStore((s) => s.backend);
+  const isInitialized = useRendererStore((s) => s.isInitialized);
+
+  if (!isInitialized) return null;
+
+  const isWebGPU = backend === 'webgpu';
+  const label = isWebGPU ? 'GPU' : 'GL';
+  const colorClass = isWebGPU
+    ? 'bg-emerald-500/20 text-emerald-400'
+    : 'bg-slate-500/20 text-slate-400';
+
+  return (
+    <span
+      className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${colorClass}`}
+      title={isWebGPU ? 'WebGPU 렌더러 활성' : 'WebGL 폴백 렌더러'}
+    >
+      {label}
+    </span>
+  );
 }
 
 /* ───────────── 메뉴 드롭다운 ───────────── */
@@ -427,6 +452,7 @@ export default function TopBar() {
 
         {/* 우측: 시계 + 저장 + 메뉴 */}
         <div className="relative flex items-center gap-1.5">
+          <RendererBadge />
           <ClockDisplay />
           <ToolDivider />
           <IconButton

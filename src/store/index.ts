@@ -7,3 +7,4 @@ export { default as useMapStore } from './useMapStore.ts';
 export { default as useTerrainStore } from './useTerrainStore.ts';
 export { default as useTrackStore } from './useTrackStore.ts';
 export { default as useRideTestStore } from './useRideTestStore.ts';
+export { default as useRendererStore } from './useRendererStore.ts';
