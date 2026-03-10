@@ -93,6 +93,47 @@ export interface Ride {
   vehicleConfig: import('./ride.ts').VehicleConfig;
 }
 
+// ─── 프리셋 ─────────────────────────────────────────────
+
+/** 프리셋 노드 (station_start 기준 상대 좌표) */
+export interface PresetNode {
+  localIndex: number;
+  relativePosition: Vector3Data;
+  relativeDirection: number;
+  type: TrackNodeType;
+}
+
+/** 프리셋 세그먼트 */
+export interface PresetSegment {
+  localIndex: number;
+  type: SegmentType;
+  specialType: SpecialType;
+  startNodeIndex: number;
+  endNodeIndex: number;
+  length: number;
+}
+
+/** 리졸브된 노드 (절대 좌표) */
+export interface ResolvedNode {
+  localIndex: number;
+  position: Vector3Data;
+  direction: number;
+  type: TrackNodeType;
+}
+
+/** 놀이기구 프리셋 전체 데이터 */
+export interface RidePreset {
+  id: string;
+  name: string;
+  rideType: string;
+  stationLength: number;
+  nodes: PresetNode[];
+  segments: PresetSegment[];
+  vehicleConfig: import('./ride.ts').VehicleConfig;
+  createdAt: string;
+  segmentCount: number;
+}
+
 // ─── 빌더 모드 ──────────────────────────────────────────
 
 /** 트랙 빌더 모드 */

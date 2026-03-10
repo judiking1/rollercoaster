@@ -24,7 +24,10 @@ import {
   IconExit,
   IconChevronDown,
   IconRideList,
+  IconPreset,
 } from '../icons/index.tsx';
+import usePresetStore from '../../../store/usePresetStore.ts';
+import PresetBrowser from '../PresetBrowser.tsx';
 
 /* ───────────── 시계 표시 ───────────── */
 
@@ -292,10 +295,14 @@ export default function TopBar() {
   const rides = useTrackStore((s) => s.rides);
   const rideCount = Object.keys(rides).length;
 
+  const presets = usePresetStore((s) => s.presets);
+  const presetCount = Object.keys(presets).length;
+
   const [showSaveNotice, setShowSaveNotice] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isMapListOpen, setIsMapListOpen] = useState(false);
   const [isRideListOpen, setIsRideListOpen] = useState(false);
+  const [isPresetListOpen, setIsPresetListOpen] = useState(false);
 
   const isTrackActive = gameMode === 'track';
   const mapName = currentMapData?.meta.name ?? '새 맵';
@@ -349,7 +356,14 @@ export default function TopBar() {
 
   const handleRideListToggle = useCallback(() => {
     setIsRideListOpen((prev) => {
-      if (!prev) { setIsMenuOpen(false); setIsMapListOpen(false); }
+      if (!prev) { setIsMenuOpen(false); setIsMapListOpen(false); setIsPresetListOpen(false); }
+      return !prev;
+    });
+  }, []);
+
+  const handlePresetListToggle = useCallback(() => {
+    setIsPresetListOpen((prev) => {
+      if (!prev) { setIsMenuOpen(false); setIsMapListOpen(false); setIsRideListOpen(false); }
       return !prev;
     });
   }, []);
@@ -357,6 +371,7 @@ export default function TopBar() {
   const closeMenu = useCallback(() => setIsMenuOpen(false), []);
   const closeMapList = useCallback(() => setIsMapListOpen(false), []);
   const closeRideList = useCallback(() => setIsRideListOpen(false), []);
+  const closePresetList = useCallback(() => setIsPresetListOpen(false), []);
 
   return (
     <>
@@ -429,6 +444,26 @@ export default function TopBar() {
               onClick={handleRideListToggle}
             />
             {isRideListOpen && <RideListDropdown onClose={closeRideList} />}
+          </div>
+
+          {/* 프리셋 목록 */}
+          <div className="relative">
+            <IconButton
+              icon={
+                <span className="relative">
+                  <IconPreset />
+                  {presetCount > 0 && (
+                    <span className="absolute -right-1.5 -top-1.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-violet-500 text-[8px] font-bold leading-none text-white">
+                      {presetCount}
+                    </span>
+                  )}
+                </span>
+              }
+              label="프리셋"
+              tooltip="프리셋 배치"
+              onClick={handlePresetListToggle}
+            />
+            {isPresetListOpen && <PresetBrowser onClose={closePresetList} />}
           </div>
 
           <ToolDivider />

@@ -7,10 +7,12 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import useTrackStore from '../../../store/useTrackStore.ts';
 import useGameStore from '../../../store/useGameStore.ts';
 import useRideTestStore from '../../../store/useRideTestStore.ts';
+import usePresetStore from '../../../store/usePresetStore.ts';
 import type { Ride } from '../../../core/types/index.ts';
 import type { RideStats } from '../../../core/types/ride.ts';
 import { RIDE_DEFINITIONS } from '../../../core/types/index.ts';
 import type { RideTypeKey } from '../../../core/types/index.ts';
+import { rideToPreset } from '../../../core/systems/PresetSystem.ts';
 
 /** m/s → km/h 변환 */
 function msToKmh(ms: number): number {
@@ -135,9 +137,12 @@ function SingleRidePanel({ ride, posX, posY, zIndex }: SingleRidePanelProps) {
   const startTest = useRideTestStore((s) => s.startTest);
   const stopTest = useRideTestStore((s) => s.stopTest);
 
+  const savePreset = usePresetStore((s) => s.savePreset);
+
   const [isEditing, setIsEditing] = useState(false);
   const [editName, setEditName] = useState('');
   const [isDragging, setIsDragging] = useState(false);
+  const [presetSaved, setPresetSaved] = useState(false);
   const dragOffset = useRef({ x: 0, y: 0 });
 
   const isHighlighted = selectedRideId === ride.id;
@@ -366,6 +371,21 @@ function SingleRidePanel({ ride, posX, posY, zIndex }: SingleRidePanelProps) {
               테스트 운행
             </button>
           )
+        )}
+
+        {/* 프리셋으로 저장 (완성된 라이드만) */}
+        {ride.isComplete && !isTestRunning && (
+          <button
+            onClick={() => {
+              const preset = rideToPreset(ride, ride.name);
+              savePreset(preset);
+              setPresetSaved(true);
+              setTimeout(() => setPresetSaved(false), 2000);
+            }}
+            className="mb-2 w-full rounded bg-violet-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-violet-500"
+          >
+            {presetSaved ? '프리셋 저장됨!' : '프리셋으로 저장'}
+          </button>
         )}
 
         {/* 액션 버튼 */}

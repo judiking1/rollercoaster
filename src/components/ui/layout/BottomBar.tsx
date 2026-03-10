@@ -8,7 +8,9 @@ import useGameStore from '../../../store/useGameStore.ts';
 import useTerrainStore from '../../../store/useTerrainStore.ts';
 import useTrackStore from '../../../store/useTrackStore.ts';
 import useMapStore from '../../../store/useMapStore.ts';
+import usePresetStore from '../../../store/usePresetStore.ts';
 import useTrackBuilder from '../../../hooks/useTrackBuilder.ts';
+import usePresetPlacer from '../../../hooks/usePresetPlacer.ts';
 import useRideTestStore, { useLiveVehicleData } from '../../../store/useRideTestStore.ts';
 import type { TerrainTool } from '../../../core/types/index.ts';
 import { SEGMENT_TYPES, SPECIAL_TYPES } from '../../../core/types/index.ts';
@@ -118,6 +120,7 @@ export default function BottomBar() {
     if (builderMode === 'placing_station') return <StationPlacingHint />;
     if (builderMode === 'building') return <TrackBuilderTools />;
   }
+  if (gameMode === 'preset') return <PresetPlacingHint />;
 
   return null;
 }
@@ -322,6 +325,34 @@ function TrackBuilderTools() {
         </span>
 
         <BottomBarSaveButton />
+      </div>
+    </div>
+  );
+}
+
+/* ───────────── 프리셋 배치 힌트 ───────────── */
+
+function PresetPlacingHint() {
+  const { cancelPlacement } = usePresetPlacer();
+  const activePresetId = usePresetStore((s) => s.activePresetId);
+  const presets = usePresetStore((s) => s.presets);
+  const preset = activePresetId ? presets[activePresetId] : null;
+
+  return (
+    <div className="pointer-events-auto absolute bottom-0 left-0 right-0 z-20 flex h-14 items-center justify-center border-t border-slate-700/50 bg-slate-900/90 px-4 backdrop-blur-md">
+      <div className="flex items-center gap-4">
+        <span className="text-sm text-violet-300">
+          {preset ? `"${preset.name}" 프리셋 배치` : '프리셋 배치'}
+        </span>
+        <span className="text-xs text-slate-400">클릭: 배치 · Q/E: 회전 · ESC: 취소</span>
+        <ToolDivider />
+        <IconButton
+          icon={<IconClose />}
+          label="취소"
+          tooltip="취소 (ESC)"
+          accentColor="red"
+          onClick={cancelPlacement}
+        />
       </div>
     </div>
   );

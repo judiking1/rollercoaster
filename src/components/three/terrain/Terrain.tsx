@@ -14,6 +14,7 @@ import useGameStore from '../../../store/useGameStore.ts';
 import useTrackStore from '../../../store/useTrackStore.ts';
 import useTerrainEditor from '../../../hooks/useTerrainEditor.ts';
 import useTrackBuilder from '../../../hooks/useTrackBuilder.ts';
+import usePresetPlacer from '../../../hooks/usePresetPlacer.ts';
 import {
   generatePositions,
   calculateNormals,
@@ -48,6 +49,11 @@ export default function Terrain() {
     handleTerrainClick,
     stationPreview,
   } = useTrackBuilder();
+
+  const {
+    handleTerrainHover: presetHover,
+    handleTerrainClick: presetClick,
+  } = usePresetPlacer();
 
   // 트랙 존재 여부 (X-Ray 모드 판단용)
   const hasTrack = useMemo(() => Object.keys(rides).length > 0, [rides]);
@@ -91,8 +97,10 @@ export default function Terrain() {
       terrainPointerMove(e);
     } else if (gameMode === 'track') {
       handleTerrainHover(e.point.x, e.point.z);
+    } else if (gameMode === 'preset') {
+      presetHover(e.point.x, e.point.z);
     }
-  }, [gameMode, terrainPointerMove, handleTerrainHover]);
+  }, [gameMode, terrainPointerMove, handleTerrainHover, presetHover]);
 
   const setSelectedRide = useTrackStore((s) => s.setSelectedRide);
 
@@ -106,11 +114,14 @@ export default function Terrain() {
     } else if (gameMode === 'track' && e.button === 0) {
       e.stopPropagation();
       handleTerrainClick(e.point.x, e.point.z);
+    } else if (gameMode === 'preset' && e.button === 0) {
+      e.stopPropagation();
+      presetClick(e.point.x, e.point.z);
     } else if (gameMode === 'view' && e.button === 0) {
       // 클릭 시작 위치 기록 (드래그 판별용)
       pointerDownPos.current = { x: e.nativeEvent.clientX, y: e.nativeEvent.clientY };
     }
-  }, [gameMode, terrainPointerDown, handleTerrainClick]);
+  }, [gameMode, terrainPointerDown, handleTerrainClick, presetClick]);
 
   const handlePointerUp = useCallback((e: ThreeEvent<PointerEvent>) => {
     if (gameMode === 'terrain') {

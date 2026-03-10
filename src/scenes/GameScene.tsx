@@ -14,6 +14,7 @@ import useTrackStore from '../store/useTrackStore.ts';
 import useGameStore from '../store/useGameStore.ts';
 import useRideTestStore from '../store/useRideTestStore.ts';
 import useRendererStore from '../store/useRendererStore.ts';
+import usePresetStore from '../store/usePresetStore.ts';
 import useRideTest from '../hooks/useRideTest.ts';
 import { createWebGPURenderer } from '../core/utils/webgpu.ts';
 import type { RideStats } from '../core/types/ride.ts';
@@ -28,6 +29,12 @@ export default function GameScene() {
 
   // 테스트 운행 키보드 단축키 활성화
   useRideTest();
+
+  // 프리셋 목록 로드 (localStorage)
+  const loadPresets = usePresetStore((s) => s.loadPresets);
+  useEffect(() => {
+    loadPresets();
+  }, [loadPresets]);
 
   // WebGPU 렌더러 팩토리 (WebGPU 불가 시 자동 WebGL2 폴백)
   const glFactory = useCallback(async (defaultProps: { canvas: HTMLCanvasElement | OffscreenCanvas }) => {

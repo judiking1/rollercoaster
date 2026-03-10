@@ -78,6 +78,9 @@ interface TrackStoreActions {
   addSegment: (rideId: string) => boolean;
   removeLastSegment: (rideId: string) => void;
 
+  // 프리셋 배치로 완성된 라이드 추가
+  addPresetRide: (ride: Ride) => void;
+
   // 맵 데이터에서 복원
   loadRides: (rideDataList: RideData[]) => void;
 
@@ -473,6 +476,19 @@ const useTrackStore = create<TrackStoreState & TrackStoreActions>()((set, get) =
       rides: { ...s.rides, [rideId]: updatedRide },
     });
   },
+
+  // ─── 프리셋 배치 ─────────────────────────────────────────
+
+  addPresetRide: (ride) => set((s) => {
+    // ride-N에서 N 추출하여 counter 업데이트
+    const match = ride.id.match(/^ride-(\d+)$/);
+    const rideNum = match ? parseInt(match[1], 10) : s.rideCounter + 1;
+    return {
+      rides: { ...s.rides, [ride.id]: ride },
+      rideCounter: Math.max(s.rideCounter, rideNum),
+      selectedRideId: ride.id,
+    };
+  }),
 
   // ─── 맵 데이터에서 복원 ────────────────────────────────
 

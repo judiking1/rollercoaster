@@ -545,46 +545,49 @@ Phase 0 (리셋/스캐폴드)
 
 ### 7-1. 타입 정의
 
-- [ ] `common.ts`에 GameMode `'preset'` 추가
-- [ ] `track.ts`에 RidePreset, PresetNode, PresetSegment 인터페이스 추가
+- [x] `common.ts`에 GameMode `'preset'` 추가
+- [x] `track.ts`에 RidePreset, PresetNode, PresetSegment, ResolvedNode 인터페이스 추가
 
 ### 7-2. PresetSystem.ts — 순수 함수 (신규)
 
-- [ ] `rideToPreset(ride, name)` — station_start 기준 상대 좌표 변환, 그래프 순회, localIndex 매핑
-- [ ] `resolvePresetPositions(preset, targetPos, targetDir)` — 회전+이동 절대 좌표 복원
-- [ ] `rotatePositionY(pos, angleDeg)` — Y축 회전 (90도 단위)
-- [ ] `validatePresetPlacement(resolvedNodes, station, existingRides, getTerrainHeight)` — 지하/충돌 검증
-- [ ] `presetToRide(preset, resolvedNodes, station, rideId)` — 새 ID로 완성 Ride 생성
+- [x] `rideToPreset(ride, name)` — station_start 기준 상대 좌표 변환, 그래프 순회, localIndex 매핑
+- [x] `resolvePresetPositions(preset, targetPos, targetDir)` — 회전+이동 절대 좌표 복원
+- [x] `rotatePositionY(pos, angleDeg)` — Y축 회전 (90도 단위)
+- [x] `validatePresetPlacement(resolvedNodes, station, existingRides, getTerrainHeight)` — 지하/충돌 검증
+- [x] `presetToRide(preset, resolvedNodes, station, rideId)` — 새 ID로 완성 Ride 생성
+- [x] `centerToStationStart(centerX, centerZ, centerY, direction, stationLength)` — 중심→시작점 변환
 
 ### 7-3. usePresetStore.ts — 상태 관리 (신규)
 
-- [ ] 프리셋 목록, 배치 모드 상태, previewPosition/Direction/Valid
-- [ ] localStorage 연동 (저장/로드)
-- [ ] savePreset, deletePreset, setActivePreset, rotatePreview, resetPlacement
+- [x] 프리셋 목록, 배치 모드 상태, previewPosition/Direction/Valid, resolvedNodes
+- [x] localStorage 연동 (저장/로드)
+- [x] savePreset, deletePreset, setActivePreset, rotatePreview, resetPlacement, updatePreview, loadPresets
 
 ### 7-4. useTrackStore 확장
 
-- [ ] `addPresetRide(ride)` 액션 추가
+- [x] `addPresetRide(ride)` 액션 추가
 
 ### 7-5. usePresetPlacer.ts — 배치 인터랙션 훅 (신규)
 
-- [ ] handleTerrainHover: snapToGrid → resolvePresetPositions → validate → updatePreview
-- [ ] handleTerrainClick: presetToRide → addPresetRide → 배치 확정
-- [ ] Q/E 키 회전, ESC 취소
+- [x] handleTerrainHover: snapToGrid → resolvePresetPositions → validate → updatePreview
+- [x] handleTerrainClick: presetToRide → addPresetRide → 배치 확정
+- [x] Q/E 키 회전 (현재 프리뷰 위치로 즉시 재계산), ESC 취소
 
 ### 7-6. PresetPreview.tsx — 3D 프리뷰 (신규)
 
-- [ ] resolvePresetPositions → CatmullRomCurve3 → TubeGeometry 반투명 렌더링
-- [ ] valid=초록, invalid=빨강, 정거장 ghost 박스
+- [x] resolvePresetPositions → buildCurvePoints → CatmullRomCurve3 → TubeGeometry 반투명 렌더링
+- [x] valid=초록, invalid=빨강, 정거장 ghost 박스
 
 ### 7-7. UI 통합
 
-- [ ] IconPreset 아이콘 추가
-- [ ] PresetBrowser.tsx — 드롭다운 목록 (이름, rideType, segmentCount, 삭제)
-- [ ] TopBar.tsx — 프리셋 버튼 + PresetBrowser 드롭다운
-- [ ] BottomBar.tsx — `gameMode === 'preset'` 힌트 패널 (Q/E 회전, 클릭 배치, ESC 취소)
-- [ ] RideInfoPanel.tsx — "프리셋으로 저장" 버튼
-- [ ] Scene.tsx — PresetPreview 렌더, gameMode='preset' 마우스 연결
+- [x] IconPreset 아이콘 추가
+- [x] PresetBrowser.tsx — 드롭다운 목록 (이름, segmentCount, 삭제)
+- [x] TopBar.tsx — 프리셋 버튼 + PresetBrowser 드롭다운 + 프리셋 수 배지
+- [x] BottomBar.tsx — `gameMode === 'preset'` 힌트 패널 (Q/E 회전, 클릭 배치, ESC 취소)
+- [x] RideInfoPanel.tsx — "프리셋으로 저장" 버튼 + 저장 완료 피드백
+- [x] Scene.tsx — PresetPreview 렌더, gameMode='preset' 카메라 좌클릭 비활성화
+- [x] Terrain.tsx — preset 모드 포인터 핸들러 연결
+- [x] GameScene.tsx — 프리셋 목록 로드 (localStorage)
 
 **생성 파일**:
 `src/core/systems/PresetSystem.ts`, `src/store/usePresetStore.ts`,
@@ -657,6 +660,7 @@ Phase 0 (리셋/스캐폴드)
 
 | 날짜 | 내용 |
 |------|------|
+| 2026-03-11 | Phase 7 완료: 프리셋 배치 시스템 — PresetSystem 순수 함수, usePresetStore (localStorage), usePresetPlacer 훅, PresetPreview 3D 프리뷰, PresetBrowser UI, TopBar/BottomBar/RideInfoPanel/Scene/Terrain 통합 |
 | 2026-03-09 | Phase 6-7: WebGPU 렌더러 점진적 전환 세팅, 테스트 운행 스터터링 수정 (useFrame 내 Zustand set() 제거 → 뮤터블 버퍼 + 폴링 훅) |
 | 2026-03-06 | Phase 6-5/6-6 완료: 차량 설정 실반영(외형/멀티트레인/칸수), 테스트 운행 중지 시 초기 상태 복원. Phase 7 상세 계획 추가 |
 | 2026-03-05 | Phase 6: vehicleConfig 데이터 모델/UI, 놀이기구 목록 드롭다운 구현. 미구현 항목(차량 실반영, 운행 중지 복원) 계획 추가 |

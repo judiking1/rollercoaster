@@ -216,6 +216,17 @@ export function IconRideList({ className }: IconProps) {
   );
 }
 
+/** 프리셋 — 복사 + 스탬프 */
+export function IconPreset({ className }: IconProps) {
+  return (
+    <svg className={className} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="3" width="8" height="10" rx="1" />
+      <path d="M9 7h8a1 1 0 011 1v8a1 1 0 01-1 1H9" />
+      <path d="M6 6v4M4.5 8h3" />
+    </svg>
+  );
+}
+
 /** 아래 화살표 — 드롭다운 힌트 */
 export function IconChevronDown({ className }: IconProps) {
   return (

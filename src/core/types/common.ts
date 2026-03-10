@@ -103,4 +103,4 @@ export interface RideData {
 export type SceneType = 'mainMenu' | 'mapSelect' | 'game';
 
 /** 게임 모드 */
-export type GameMode = 'view' | 'terrain' | 'track' | 'ride';
+export type GameMode = 'view' | 'terrain' | 'track' | 'ride' | 'preset';

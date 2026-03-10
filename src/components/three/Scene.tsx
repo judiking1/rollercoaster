@@ -19,6 +19,7 @@ import TrackPath from './track/TrackPath.tsx';
 import TrackPreview from './track/TrackPreview.tsx';
 import TrackSupport from './track/TrackSupport.tsx';
 import TrackTunnel from './track/TrackTunnel.tsx';
+import PresetPreview from './ride/PresetPreview.tsx';
 import useGameStore from '../../store/useGameStore.ts';
 import useTerrainStore from '../../store/useTerrainStore.ts';
 import useTrackStore from '../../store/useTrackStore.ts';
@@ -53,7 +54,7 @@ export default function Scene() {
     const controls = controlsRef.current;
     if (!controls) return;
 
-    if (gameMode === 'terrain' || gameMode === 'track') {
+    if (gameMode === 'terrain' || gameMode === 'track' || gameMode === 'preset') {
       controls.mouseButtons.left = CameraControlsImpl.ACTION.NONE;
       controls.mouseButtons.right = CameraControlsImpl.ACTION.ROTATE;
       controls.mouseButtons.middle = CameraControlsImpl.ACTION.TRUCK;
@@ -239,6 +240,9 @@ export default function Scene() {
 
       {/* 트랙 빌더 프리뷰 */}
       {gameMode === 'track' && <TrackPreview />}
+
+      {/* 프리셋 배치 프리뷰 */}
+      {gameMode === 'preset' && <PresetPreview />}
     </>
   );
 }

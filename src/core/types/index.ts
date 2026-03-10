@@ -34,6 +34,10 @@ export type {
   Ride,
   TrackBuilderMode,
   TrackPreviewData,
+  PresetNode,
+  PresetSegment,
+  ResolvedNode,
+  RidePreset,
 } from './track.ts';
 export { SEGMENT_TYPES, SPECIAL_TYPES } from './track.ts';
 
